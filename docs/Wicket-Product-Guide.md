@@ -6,7 +6,7 @@
 |---|---|
 | Product | Wicket 1.3 (publisher Dave The Wicketkeeper) with the optional companion `Wicket Actions - Base` 0.3 and the `wicket-mcp` server 2.3 |
 | Platform | Business Central 26 and later, SaaS (online). AL runtime 16.0. The core app depends on the System Application only. |
-| Guide version | 2026-10-14 |
+| Guide version | 2026-10-28 |
 | Audience | Part I is for everyone. Parts II and III are for the Business Central administrator or consultant who installs and configures Wicket. Parts IV to VI are for the developer or agent builder who calls it. |
 
 This guide is the complete manual. It explains what Wicket is, how to install and secure it, how to take the first calls, and how to use every operation, with worked configuration examples for the deployments people actually run. The runtime is always the final authority: `capabilities` and `describe` report what a given tenant exposes right now, and when this text and the endpoint disagree, the endpoint is right.
@@ -556,6 +556,165 @@ The four posting verbs accept `preview: true` (chapter 23). `document-pdf` and `
 The journal wrappers call the batch-posting codeunits directly (the interactive front ends would ask questions or, with *Post with Job Queue*, only schedule the post), but they apply the same business refusals those front ends apply first: a template with **Force Posting Report** must be posted through its report, and a Jobs general-journal template whose Source Code is Source Code Setup's **Job G/L WIP** code is refused (those lines belong to the WIP process). Results are described in chapter 23.
 
 To enable posting of sales documents: set `Allow Run` on the `post-sales` row of the Action Catalog (for `action`) and, if raw `invoke` is also wanted, `Allow Run` on the Procedure Catalog row for 94200 plus `Allow Invoke` on the exposure row for codeunit 94200. Revoke by switching the flag off; deleting a row is not durable because re-enrolment re-inserts it disabled.
+
+### Adding your own action
+
+Any extension can add verbs to the Action Catalog without a change to Wicket: the companion is one such provider, not a special case. A provider needs three things: a **wrapper codeunit** that does the work, an **enrolment** that writes the catalog row when the app is installed or upgraded, and a **permission set** for the principals that may run it. The example below adds `block-customer`, which sets or clears a customer's *Blocked* field. It compiles against Wicket 1.3.0.0.
+
+**1. Depend on Wicket.** In the provider's `app.json` (the Base Application comes with `application`, which `Customer` needs):
+
+```json
+"dependencies": [
+  { "id": "4057cf1f-1b34-409a-a570-c6fdf625c434", "name": "Wicket", "publisher": "Dave The Wicketkeeper", "version": "1.3.0.0" }
+]
+```
+
+**2. Write the wrapper.** Its `OnRun` reads the call's arguments from the single-instance `Bcmag Invoke Context`, does the work, and hands an object back with `SetResult`. `target.systemId` from the call arrives in the arguments as `systemId`. An `Error` raised here reaches the caller as `422 action-failed` with the error text in `detail`.
+
+```al
+codeunit 50100 "Contoso Act Block Customer"
+{
+    // Action wrapper for `block-customer`: set or clear a customer's Blocked field.
+    // args:   { systemId | no, blocked: "none" | "ship" | "invoice" | "all" }
+    // result: { no, blocked, changed }
+
+    trigger OnRun()
+    var
+        Customer: Record Customer;
+        Ctx: Codeunit "Bcmag Invoke Context";
+        Args, Result : JsonObject;
+        Tok: JsonToken;
+        Id: Guid;
+        Before, NewBlocked : Enum "Customer Blocked";
+        BlockedName: Text;
+    begin
+        Args := Ctx.GetArgs();
+
+        if Args.Get('systemId', Tok) then begin
+            if not Evaluate(Id, Tok.AsValue().AsText()) then
+                Error('systemId is not a GUID.');
+            if not Customer.GetBySystemId(Id) then
+                Error('No customer has systemId %1.', Id);
+        end else
+            if Args.Get('no', Tok) then
+                Customer.Get(Tok.AsValue().AsText())
+            else
+                Error('Send systemId or no.');
+
+        if not Args.Get('blocked', Tok) then
+            Error('blocked is required: none, ship, invoice or all.');
+        BlockedName := LowerCase(Tok.AsValue().AsText());
+        case BlockedName of
+            'none':
+                NewBlocked := NewBlocked::" ";
+            'ship':
+                NewBlocked := NewBlocked::Ship;
+            'invoice':
+                NewBlocked := NewBlocked::Invoice;
+            'all':
+                NewBlocked := NewBlocked::All;
+            else
+                Error('blocked must be none, ship, invoice or all.');
+        end;
+
+        Before := Customer.Blocked;
+        Customer.Validate(Blocked, NewBlocked);
+        Customer.Modify(true);
+
+        Result.Add('no', Customer."No.");
+        Result.Add('blocked', BlockedName);
+        Result.Add('changed', Customer.Blocked <> Before);
+        Ctx.SetResult(Result);
+    end;
+}
+```
+
+**3. Enrol it.** An install codeunit writes the catalog row in every company; the upgrade codeunit calls the same procedure, so a new version refreshes the description, schema and wrapper id. A new row starts with **Allow Run** off, and a re-run never touches it, so the administrator's choice survives upgrades. Set **Is Mutating** honestly: off makes the verb run inside the forced rollback, which is right for a verb that only computes or renders.
+
+```al
+codeunit 50101 "Contoso Act Install"
+{
+    // Enrols this app's actions in Wicket's Action Catalog. A new row starts with Allow Run off;
+    // a re-run refreshes the fields this app owns and never touches Allow Run.
+    Subtype = Install;
+
+    trigger OnInstallAppPerCompany()
+    begin
+        Enrol();
+    end;
+
+    procedure Enrol()
+    var
+        Catalog: Record "Bcmag Action Catalog";
+        ActionCode: Code[50];
+    begin
+        ActionCode := 'block-customer';
+        if not Catalog.Get(ActionCode) then begin
+            Catalog.Init();
+            Catalog."Action Code" := ActionCode;
+            Catalog."Allow Run" := false; // an administrator switches it on
+            Catalog.Insert();
+        end;
+        Catalog."Wrapper Codeunit Id" := Codeunit::"Contoso Act Block Customer";
+        Catalog.Category := 'customer';
+        Catalog.Description := 'Set or clear a customer''s Blocked field. args: { systemId | no, blocked: none | ship | invoice | all }';
+        Catalog."Is Mutating" := true;
+        Catalog."Preview Supported" := false;
+        Catalog.SetArgsSchema('{"type":"object","properties":{' +
+            '"systemId":{"type":"string","format":"uuid","description":"The Customer SystemId; or send target.systemId"},' +
+            '"no":{"type":"string","maxLength":20},' +
+            '"blocked":{"type":"string","enum":["none","ship","invoice","all"]}},' +
+            '"required":["blocked"],"oneOf":[{"required":["systemId"]},{"required":["no"]}]}');
+        Catalog.Modify();
+    end;
+}
+```
+
+```al
+codeunit 50102 "Contoso Act Upgrade"
+{
+    Subtype = Upgrade;
+
+    trigger OnUpgradePerCompany()
+    var
+        Install: Codeunit "Contoso Act Install";
+    begin
+        Install.Enrol();
+    end;
+}
+```
+
+**4. Ship a permission set** for the wrapper and the data it touches. A caller needs it together with `Wicket - Execute` (or above):
+
+```al
+permissionset 50100 "Contoso Act"
+{
+    Assignable = true;
+    Caption = 'Contoso Wicket actions';
+    Permissions =
+        codeunit "Contoso Act Block Customer" = X,
+        tabledata Customer = RM;
+}
+```
+
+**5. Enable and call it.** After installing the provider, an administrator reviews the wrapper, switches **Allow Run** on for `block-customer` on the Wicket Action Catalog page and assigns `Contoso Act`. Agents then find the verb in `capabilities.actions` with its `argsSchema`, and call it like any other action:
+
+```json
+{ "data": {
+    "action": "block-customer",
+    "target": { "systemId": "<@systemId of a Customer row>" },
+    "args":   { "blocked": "invoice" }
+} }
+```
+
+The result is the wrapper's object, for example `{ "no": "10000", "blocked": "invoice", "changed": true }`.
+
+Things to keep in mind when writing a provider:
+
+- **Validate in the wrapper.** Wicket publishes the Args Schema to agents but does not check calls against it; the wrapper is the only thing between a malformed argument and the database.
+- **Preview Supported** only for a wrapper that honours `args.preview` (see the Action Catalog table above). Leave it off otherwise.
+- **Companies created later.** `OnInstallAppPerCompany` runs for the companies that exist at install time. To enrol in companies created afterwards, subscribe to the `Company` table's `OnAfterInsertEvent` and enrol there, as the companion does.
+- **Review like a permission set.** The catalog row is the gate: once Allow Run is on, the wrapper bypasses the exposure allowlist and the field policy, and can touch any table its code reaches.
 
 ## 13. Async delivery setup
 

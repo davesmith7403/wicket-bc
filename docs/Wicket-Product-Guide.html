@@ -337,7 +337,7 @@ td:first-child { color: var(--ink); }
     <span class="topbar-name">Wicket</span>
     <span class="topbar-sep" aria-hidden="true"></span>
     <span class="topbar-doc">Product Guide</span>
-    <span class="pill">App 1.2 · MCP 1.10 · 2026-10-14</span>
+    <span class="pill">App 1.3 · MCP 2.3 · 2026-10-28</span>
   </header>
   <nav class="toc" id="toc" aria-label="Contents">
     <div class="toc-head"><span>Contents</span></div>
@@ -369,7 +369,7 @@ td:first-child { color: var(--ink); }
 </tr>
 <tr>
 <td>Guide version</td>
-<td>2026-10-14</td>
+<td>2026-10-28</td>
 </tr>
 <tr>
 <td>Audience</td>
@@ -1524,6 +1524,145 @@ Authorization: Bearer &lt;token&gt;
 <p>The four posting verbs accept <code>preview: true</code> (chapter 23). <code>document-pdf</code> and <code>item-availability</code> are enrolled with <strong>Is Mutating</strong> off: they run inside the forced rollback, so a report that stamps <em>No. Printed</em> leaves no trace, they work on a read-only endpoint and they need no idempotency key. The quote conversions take the same path as <strong>Make Order</strong> / <strong>Make Invoice</strong> on the quote page: the customer or vendor is checked, the lines are copied, the quote is archived when the setup says so and then deleted. A sales quote tied to an opportunity in progress is refused, because Business Central would open the <em>Close Opportunity</em> page there. Release and reopen take the same path as the Release and Reopen actions on the document page, so the approval workflow and prepayment rules apply: a document pending approval can be neither released nor reopened, and a sales or purchase order with an unpaid prepayment becomes <em>Pending Prepayment</em> instead of released.</p>
 <p>The journal wrappers call the batch-posting codeunits directly (the interactive front ends would ask questions or, with <em>Post with Job Queue</em>, only schedule the post), but they apply the same business refusals those front ends apply first: a template with <strong>Force Posting Report</strong> must be posted through its report, and a Jobs general-journal template whose Source Code is Source Code Setup&#39;s <strong>Job G/L WIP</strong> code is refused (those lines belong to the WIP process). Results are described in chapter 23.</p>
 <p>To enable posting of sales documents: set <code>Allow Run</code> on the <code>post-sales</code> row of the Action Catalog (for <code>action</code>) and, if raw <code>invoke</code> is also wanted, <code>Allow Run</code> on the Procedure Catalog row for 94200 plus <code>Allow Invoke</code> on the exposure row for codeunit 94200. Revoke by switching the flag off; deleting a row is not durable because re-enrolment re-inserts it disabled.</p>
+<h3 id="adding-your-own-action">Adding your own action</h3>
+<p>Any extension can add verbs to the Action Catalog without a change to Wicket: the companion is one such provider, not a special case. A provider needs three things: a <strong>wrapper codeunit</strong> that does the work, an <strong>enrolment</strong> that writes the catalog row when the app is installed or upgraded, and a <strong>permission set</strong> for the principals that may run it. The example below adds <code>block-customer</code>, which sets or clears a customer&#39;s <em>Blocked</em> field. It compiles against Wicket 1.3.0.0.</p>
+<p><strong>1. Depend on Wicket.</strong> In the provider&#39;s <code>app.json</code> (the Base Application comes with <code>application</code>, which <code>Customer</code> needs):</p>
+<pre data-lang="json"><code class="language-json">&quot;dependencies&quot;: [
+  { &quot;id&quot;: &quot;4057cf1f-1b34-409a-a570-c6fdf625c434&quot;, &quot;name&quot;: &quot;Wicket&quot;, &quot;publisher&quot;: &quot;Dave The Wicketkeeper&quot;, &quot;version&quot;: &quot;1.3.0.0&quot; }
+]
+</code></pre>
+<p><strong>2. Write the wrapper.</strong> Its <code>OnRun</code> reads the call&#39;s arguments from the single-instance <code>Bcmag Invoke Context</code>, does the work, and hands an object back with <code>SetResult</code>. <code>target.systemId</code> from the call arrives in the arguments as <code>systemId</code>. An <code>Error</code> raised here reaches the caller as <code>422 action-failed</code> with the error text in <code>detail</code>.</p>
+<pre data-lang="al"><code class="language-al">codeunit 50100 &quot;Contoso Act Block Customer&quot;
+{
+    // Action wrapper for `block-customer`: set or clear a customer&#39;s Blocked field.
+    // args:   { systemId | no, blocked: &quot;none&quot; | &quot;ship&quot; | &quot;invoice&quot; | &quot;all&quot; }
+    // result: { no, blocked, changed }
+
+    trigger OnRun()
+    var
+        Customer: Record Customer;
+        Ctx: Codeunit &quot;Bcmag Invoke Context&quot;;
+        Args, Result : JsonObject;
+        Tok: JsonToken;
+        Id: Guid;
+        Before, NewBlocked : Enum &quot;Customer Blocked&quot;;
+        BlockedName: Text;
+    begin
+        Args := Ctx.GetArgs();
+
+        if Args.Get(&#39;systemId&#39;, Tok) then begin
+            if not Evaluate(Id, Tok.AsValue().AsText()) then
+                Error(&#39;systemId is not a GUID.&#39;);
+            if not Customer.GetBySystemId(Id) then
+                Error(&#39;No customer has systemId %1.&#39;, Id);
+        end else
+            if Args.Get(&#39;no&#39;, Tok) then
+                Customer.Get(Tok.AsValue().AsText())
+            else
+                Error(&#39;Send systemId or no.&#39;);
+
+        if not Args.Get(&#39;blocked&#39;, Tok) then
+            Error(&#39;blocked is required: none, ship, invoice or all.&#39;);
+        BlockedName := LowerCase(Tok.AsValue().AsText());
+        case BlockedName of
+            &#39;none&#39;:
+                NewBlocked := NewBlocked::&quot; &quot;;
+            &#39;ship&#39;:
+                NewBlocked := NewBlocked::Ship;
+            &#39;invoice&#39;:
+                NewBlocked := NewBlocked::Invoice;
+            &#39;all&#39;:
+                NewBlocked := NewBlocked::All;
+            else
+                Error(&#39;blocked must be none, ship, invoice or all.&#39;);
+        end;
+
+        Before := Customer.Blocked;
+        Customer.Validate(Blocked, NewBlocked);
+        Customer.Modify(true);
+
+        Result.Add(&#39;no&#39;, Customer.&quot;No.&quot;);
+        Result.Add(&#39;blocked&#39;, BlockedName);
+        Result.Add(&#39;changed&#39;, Customer.Blocked &lt;&gt; Before);
+        Ctx.SetResult(Result);
+    end;
+}
+</code></pre>
+<p><strong>3. Enrol it.</strong> An install codeunit writes the catalog row in every company; the upgrade codeunit calls the same procedure, so a new version refreshes the description, schema and wrapper id. A new row starts with <strong>Allow Run</strong> off, and a re-run never touches it, so the administrator&#39;s choice survives upgrades. Set <strong>Is Mutating</strong> honestly: off makes the verb run inside the forced rollback, which is right for a verb that only computes or renders.</p>
+<pre data-lang="al"><code class="language-al">codeunit 50101 &quot;Contoso Act Install&quot;
+{
+    // Enrols this app&#39;s actions in Wicket&#39;s Action Catalog. A new row starts with Allow Run off;
+    // a re-run refreshes the fields this app owns and never touches Allow Run.
+    Subtype = Install;
+
+    trigger OnInstallAppPerCompany()
+    begin
+        Enrol();
+    end;
+
+    procedure Enrol()
+    var
+        Catalog: Record &quot;Bcmag Action Catalog&quot;;
+        ActionCode: Code[50];
+    begin
+        ActionCode := &#39;block-customer&#39;;
+        if not Catalog.Get(ActionCode) then begin
+            Catalog.Init();
+            Catalog.&quot;Action Code&quot; := ActionCode;
+            Catalog.&quot;Allow Run&quot; := false; // an administrator switches it on
+            Catalog.Insert();
+        end;
+        Catalog.&quot;Wrapper Codeunit Id&quot; := Codeunit::&quot;Contoso Act Block Customer&quot;;
+        Catalog.Category := &#39;customer&#39;;
+        Catalog.Description := &#39;Set or clear a customer&#39;&#39;s Blocked field. args: { systemId | no, blocked: none | ship | invoice | all }&#39;;
+        Catalog.&quot;Is Mutating&quot; := true;
+        Catalog.&quot;Preview Supported&quot; := false;
+        Catalog.SetArgsSchema(&#39;{&quot;type&quot;:&quot;object&quot;,&quot;properties&quot;:{&#39; +
+            &#39;&quot;systemId&quot;:{&quot;type&quot;:&quot;string&quot;,&quot;format&quot;:&quot;uuid&quot;,&quot;description&quot;:&quot;The Customer SystemId; or send target.systemId&quot;},&#39; +
+            &#39;&quot;no&quot;:{&quot;type&quot;:&quot;string&quot;,&quot;maxLength&quot;:20},&#39; +
+            &#39;&quot;blocked&quot;:{&quot;type&quot;:&quot;string&quot;,&quot;enum&quot;:[&quot;none&quot;,&quot;ship&quot;,&quot;invoice&quot;,&quot;all&quot;]}},&#39; +
+            &#39;&quot;required&quot;:[&quot;blocked&quot;],&quot;oneOf&quot;:[{&quot;required&quot;:[&quot;systemId&quot;]},{&quot;required&quot;:[&quot;no&quot;]}]}&#39;);
+        Catalog.Modify();
+    end;
+}
+</code></pre>
+<pre data-lang="al"><code class="language-al">codeunit 50102 &quot;Contoso Act Upgrade&quot;
+{
+    Subtype = Upgrade;
+
+    trigger OnUpgradePerCompany()
+    var
+        Install: Codeunit &quot;Contoso Act Install&quot;;
+    begin
+        Install.Enrol();
+    end;
+}
+</code></pre>
+<p><strong>4. Ship a permission set</strong> for the wrapper and the data it touches. A caller needs it together with <code>Wicket - Execute</code> (or above):</p>
+<pre data-lang="al"><code class="language-al">permissionset 50100 &quot;Contoso Act&quot;
+{
+    Assignable = true;
+    Caption = &#39;Contoso Wicket actions&#39;;
+    Permissions =
+        codeunit &quot;Contoso Act Block Customer&quot; = X,
+        tabledata Customer = RM;
+}
+</code></pre>
+<p><strong>5. Enable and call it.</strong> After installing the provider, an administrator reviews the wrapper, switches <strong>Allow Run</strong> on for <code>block-customer</code> on the Wicket Action Catalog page and assigns <code>Contoso Act</code>. Agents then find the verb in <code>capabilities.actions</code> with its <code>argsSchema</code>, and call it like any other action:</p>
+<pre data-lang="json"><code class="language-json">{ &quot;data&quot;: {
+    &quot;action&quot;: &quot;block-customer&quot;,
+    &quot;target&quot;: { &quot;systemId&quot;: &quot;&lt;@systemId of a Customer row&gt;&quot; },
+    &quot;args&quot;:   { &quot;blocked&quot;: &quot;invoice&quot; }
+} }
+</code></pre>
+<p>The result is the wrapper&#39;s object, for example <code>{ &quot;no&quot;: &quot;10000&quot;, &quot;blocked&quot;: &quot;invoice&quot;, &quot;changed&quot;: true }</code>.</p>
+<p>Things to keep in mind when writing a provider:</p>
+<ul>
+<li><strong>Validate in the wrapper.</strong> Wicket publishes the Args Schema to agents but does not check calls against it; the wrapper is the only thing between a malformed argument and the database.</li>
+<li><strong>Preview Supported</strong> only for a wrapper that honours <code>args.preview</code> (see the Action Catalog table above). Leave it off otherwise.</li>
+<li><strong>Companies created later.</strong> <code>OnInstallAppPerCompany</code> runs for the companies that exist at install time. To enrol in companies created afterwards, subscribe to the <code>Company</code> table&#39;s <code>OnAfterInsertEvent</code> and enrol there, as the companion does.</li>
+<li><strong>Review like a permission set.</strong> The catalog row is the gate: once Allow Run is on, the wrapper bypasses the exposure allowlist and the field policy, and can touch any table its code reaches.</li>
+</ul>
 <h2 id="13-async-delivery-setup">13. Async delivery setup</h2>
 <ol>
 <li>Create a Storage account and a <strong>private</strong> container, for example <code>wicket-exports</code>.</li>
@@ -3325,7 +3464,7 @@ cp .env.example .env
 </tr>
 </tbody></table></div>
 </article>
-    <footer class="colophon">Wicket Product Guide · generated from <code>docs/Wicket-Product-Guide.md</code> · guide version 2026-10-14 · the endpoint's <code>capabilities</code> is authoritative when this text and the tenant disagree.</footer>
+    <footer class="colophon">Wicket Product Guide · generated from <code>docs/Wicket-Product-Guide.md</code> · guide version 2026-10-28 · the endpoint's <code>capabilities</code> is authoritative when this text and the tenant disagree.</footer>
   </main>
 </div>
 <script>(function () {

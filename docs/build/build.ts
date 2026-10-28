@@ -12,6 +12,9 @@ const SRC = resolve(DOCS, "Wicket-Product-Guide.md");
 const OUT_DIR = HERE;
 const md = readFileSync(SRC, "utf8");
 const guideVersion = (md.match(/\| Guide version \| ([^|]+?) \|/) ?? [, "unknown"])[1].trim();
+// The header pill reads the versions from the guide's own Product row, so it cannot drift from the text.
+const appVersion = (md.match(/\| Product \| Wicket (\d+\.\d+)/) ?? [, "?"])[1];
+const mcpVersion = (md.match(/`wicket-mcp` server (\d+\.\d+)/) ?? [, "?"])[1];
 
 type TocPart = { id: string; label: string; chapters: { id: string; label: string }[] };
 const toc: TocPart[] = [];
@@ -91,7 +94,7 @@ const inner = `
     <span class="topbar-name">Wicket</span>
     <span class="topbar-sep" aria-hidden="true"></span>
     <span class="topbar-doc">Product Guide</span>
-    <span class="pill">App 1.2 · MCP 1.10 · ${guideVersion}</span>
+    <span class="pill">App ${appVersion} · MCP ${mcpVersion} · ${guideVersion}</span>
   </header>
   <nav class="toc" id="toc" aria-label="Contents">
     <div class="toc-head"><span>Contents</span></div>
