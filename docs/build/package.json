@@ -1,0 +1,7 @@
+{
+  "name": "bcmag-docs-build",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "bun run build.ts", "pdf": "sh pdf.sh" },
+  "dependencies": { "marked": "^4.3.0" }
+}

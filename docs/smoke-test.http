@@ -1,0 +1,449 @@
+# Wicket — smoke-test recipe
+# VS Code REST Client  (install "humao.rest-client" extension)
+#
+# Before running:
+#   1. Replace <tenantId> and <env> with your BC SaaS sandbox coordinates.
+#   2. Replace <companyId> with the GUID of the company you want to probe.
+#   3. Acquire an Entra ID bearer token:
+#        az login
+#        az account get-access-token \
+#          --resource https://api.businesscentral.dynamics.com \
+#          --query accessToken -o tsv
+#      and paste the token below (or use a service-principal flow).
+#
+# Expected results are noted after each request.
+#
+# Wire format: the body is {"envelope": "<envelope JSON as a string>"}; the answer's "value" is
+# a string holding the result JSON (BC publishes bound actions only for simple parameter types).
+
+@base    = https://api.businesscentral.dynamics.com/v2.0/<tenantId>/<env>/api/wicket/rpc/v1.0
+@company = <companyId>
+@token   = <paste-bearer-token-here>
+
+###
+# discover — list published tables matching "Customer"
+# Expected: response.value contains an entry with id=18, name="Customer"
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-1",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": { "kind": "tables", "filter": "*Customer*", "top": 5 }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.discover
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-1\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"kind\": \"tables\", \"filter\": \"*Customer*\", \"top\": 5}}"}
+
+###
+# describe — return schema for table 18 (Customer)
+# Expected: response contains "fields" and "keys" arrays for the Customer table
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-2",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": { "kind": "table", "tableId": 18 }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.describe
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-2\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"kind\": \"table\", \"tableId\": 18}}"}
+
+###
+# discover apis — the tenant's API pages over table 18 (Customer)
+# Expected: a row with route "v2.0/customers", plus catalogVersion and apiRouting.
+# Variant — revalidate a cache: send {"kind": "apis", "ifNoneMatch": "<catalogVersion>"};
+#           an unchanged catalog answers notModified: true with no rows.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-2a",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": { "kind": "apis", "tableId": 18 }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.discover
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-2a\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"kind\": \"apis\", \"tableId\": 18}}"}
+
+###
+# describe api — one API page's fields and whether Wicket lets a client read through it
+# Expected: fields[] with mapped/readable per API field, routable, notRoutableReason when false.
+# Take pageId from the discover apis answer above (30009 is APIV2 - Customers in a standard tenant).
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-2b",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": { "kind": "api", "pageId": 30009 }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.describe
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-2b\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"kind\": \"api\", \"pageId\": 30009}}"}
+
+###
+# query — fetch up to 5 customers whose name starts with "A"
+# Expected: up to 5 records, each with "No.", "Name", and "@etag"
+# Variant — incremental sync: add "modifiedAfter": "2026-01-01T00:00:00Z" (and/or
+#           "modifiedBefore") to data to bound the read by SystemModifiedAt; the range is
+#           ANDed with filter. Do NOT also filter on SystemModifiedAt (field 2000000003) —
+#           that conflicts → 400 problem (type .../invalid-field).
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-3",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": {
+#     "tableId": 18,
+#     "select": ["No.", "Name"],
+#     "filter": "startswith(Name, 'A')",
+#     "top": 5
+#   }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.query
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-3\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"tableId\": 18, \"select\": [\"No.\", \"Name\"], \"filter\": \"startswith(Name, 'A')\", \"top\": 5}}"}
+
+# Transport reminder: every call returns HTTP 200. Read response.value:
+#   - if it has BOTH "type" and "status" → it's an RFC 7807 problem document
+#   - otherwise it's the result.
+# Each query row carries an opaque @recordId (used by readBlob/modify/delete) and an @etag.
+# When more rows exist, the response carries @nextLink (an opaque cursor). @pagingMode is "keyset"
+# without orderBy (the cursor resumes after the last primary key) and "offset" with orderBy.
+# Pass the cursor back unchanged: a malformed or foreign one → 400 (type .../invalid-cursor).
+
+###
+# capabilities — machine-readable self-description (no data needed)
+# Expected: response.value has product="Wicket", urlTemplate, transport.httpStatus="always-200",
+#           an operations[] array (16 entries incl. capabilities), filterGrammar, and live limits.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-4",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": {}
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.capabilities
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-4\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {}}"}
+
+###
+# readBlob — fetch one binary field as base64
+# Prereq: copy a real @recordId from a prior query row into recordId below.
+#         18/16 is Customer "Picture" (a Media field). Adjust tableId/fieldNo as needed.
+# Expected: response.value = { contentType, bytesBase64 }. base64-decode bytesBase64 yourself.
+#           Empty media → 404 problem (type .../empty-blob). MediaSet fields → 422. Over 10 MB →
+#           413 (type .../blob-too-large). A restricted or nonexistent fieldNo → 403 field-restricted.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-5",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": {
+#     "tableId": 18,
+#     "recordId": "<paste-an-@recordId-from-a-query-row>",
+#     "fieldNo": 16
+#   }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.readBlob
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-5\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"tableId\": 18, \"recordId\": \"<paste-an-@recordId-from-a-query-row>\", \"fieldNo\": 16}}"}
+
+###
+# insert — create a record
+# Prereq: table 18 must be exposed for insert in Wicket Exposure (Allow Insert) AND the app
+#         principal must hold write permission on the table. Field names are case-sensitive.
+# Expected: response.value = { recordId, @etag }. Keep recordId for modify/delete below.
+#           Validation failure → 422 problem (type .../validation) naming the offending field.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-6",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": {
+#     "tableId": 18,
+#     "values": { "Name": "Wicket Smoke Test Customer" }
+#   }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.insert
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-6\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"tableId\": 18, \"values\": {\"Name\": \"Wicket Smoke Test Customer\"}}}"}
+
+###
+# modify — update a record (optimistic concurrency via data.etag)
+# Prereq: paste the recordId returned by insert (or an @recordId from a query row).
+#         Pass the matching @etag; a stale/wrong etag → 412 (type .../precondition-failed).
+#         Omit etag to opt into last-write-wins (unless the tenant requires ETag on writes).
+# Expected: response.value = { recordId, @etag } with a fresh @etag.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-7",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": {
+#     "tableId": 18,
+#     "recordId": "<paste-the-recordId-from-insert>",
+#     "etag": "<paste-the-@etag-from-insert>",
+#     "values": { "Name": "Wicket Smoke Test Customer (edited)" }
+#   }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.modify
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-7\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"tableId\": 18, \"recordId\": \"<paste-the-recordId-from-insert>\", \"etag\": \"<paste-the-@etag-from-insert>\", \"values\": {\"Name\": \"Wicket Smoke Test Customer (edited)\"}}}"}
+
+###
+# delete — remove a record (optimistic concurrency via data.etag)
+# Prereq: paste the recordId (and current @etag) of the record you inserted above.
+# Expected: response.value = { deleted: true, recordId }. ETag mismatch → 412.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-8",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": {
+#     "tableId": 18,
+#     "recordId": "<paste-the-recordId-from-insert>",
+#     "etag": "<paste-the-latest-@etag>"
+#   }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.delete
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-8\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"tableId\": 18, \"recordId\": \"<paste-the-recordId-from-insert>\", \"etag\": \"<paste-the-latest-@etag>\"}}"}
+
+###
+# invoke — run an enrolled wrapper procedure (deny-by-default)
+# Prereq: enrol the sample in Wicket Procedure Catalog
+#           { Logical Codeunit Id = 94190, Procedure Name = "Ping", Wrapper Codeunit Id = 94190,
+#             Return Shape = json, Allow Run = true }
+#         AND expose codeunit 94190 for invoke in Wicket Exposure (Allow Invoke).
+# Expected: response.value = { pong: true, echo: "hi", serverTime, company }.
+#           Not enrolled → 404 (type .../unknown-procedure); not exposed → 403; disabled → 403.
+#           The envelope idempotencyKey is required while Wicket Setup "Require Key For Actions" is on
+#           (the fresh-install default) — without it: 400 (type .../idempotency-key-required).
+#           data.args must be a JSON object (or omitted) — anything else → 400 invalid-field.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-9",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "idempotencyKey": "smoke-9-<unique>",
+#   "data": {
+#     "codeunitId": 94190,
+#     "procedure": "Ping",
+#     "args": { "message": "hi" }
+#   }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.invoke
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-9\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"idempotencyKey\": \"smoke-9-<unique>\", \"data\": {\"codeunitId\": 94190, \"procedure\": \"Ping\", \"args\": {\"message\": \"hi\"}}}"}
+
+###
+# status — poll one async request
+# Prereq: submit an async query (a query with a "deliver" block) and paste the requestId it
+#         returned. Requests are caller-scoped: a foreign/absent/malformed id → 404.
+# Expected: response.value = { requestId, status, ... }; packageUrl only once status is
+#           "succeeded" — composed fresh on every call (Service SAS re-mints the token, capped at
+#           the package's expiresAt), so poll status again for a working URL rather than storing it.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-10",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": { "requestId": "<paste-a-requestId-from-an-async-query>" }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-10\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"requestId\": \"<paste-a-requestId-from-an-async-query>\"}}"}
+
+###
+# cancel — cancel an async request (cooperative for in-flight work)
+# Prereq: paste a requestId of one of YOUR async requests. Scheduled → cancelled outright;
+#         Queued (not started yet) → cancelled outright too; Running → Cancel Requested (the
+#         worker honours it at its next checkpoint);
+#         terminal rows are a no-op.
+# Expected: response.value = { requestId, status }.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-11",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": { "requestId": "<paste-a-requestId-from-an-async-query>" }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.cancel
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-11\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"requestId\": \"<paste-a-requestId-from-an-async-query>\"}}"}
+
+###
+# requests — list your async requests, newest first (no data needed)
+# Optional: data.status (invariant name, e.g. "succeeded"; case-insensitive) and data.top (default 20, cap 100).
+# Expected: response.value = an array of rows using the same projection as "status";
+#           only rows owned by the calling principal are ever returned.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-12",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": { "top": 20 }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.requests
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-12\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"top\": 20}}"}
+
+###
+# action — run a named business action from the Action Catalog (deny-by-default)
+# Prereq: enrol "post-sales" in Wicket Action Catalog with Allow Run = true (its wrapper runs
+#         through the same invoke context as raw invoke). target.systemId comes from a query
+#         row's @systemId. Not enrolled → 404; Allow Run off → 403; wrapper error → 422.
+# WARNING: this POSTS the document for real — use a disposable sandbox order. Send
+#          "preview": true in data first: the post-* verbs then return Business Central's posting
+#          preview { preview, wouldPost, errors, entries, glAccounts } inside a forced rollback
+#          (nothing is written; no key needed; allowed on a read-only endpoint).
+#          The idempotencyKey is required while "Require Key For Actions" is on (fresh-install
+#          default); use a new key per logical post, the same key to retry it.
+#          args.preview is reserved: send data.preview instead (args.preview alone → 400), and
+#          target.systemId must not conflict with args.systemId (→ 400).
+# Expected: response.value = the wrapper's result object (or { ok: true } if it returned none).
+#           A post that committed but failed afterwards still answers posted:true, with
+#           postCommitWarning + postCommitEvidence — do not post it again.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-13",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "idempotencyKey": "smoke-13-<unique>",
+#   "data": {
+#     "action": "post-sales",
+#     "target": { "systemId": "<paste-an-@systemId-from-a-query-row>" },
+#     "args": { "ship": true, "invoice": true }
+#   }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.action
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-13\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"idempotencyKey\": \"smoke-13-<unique>\", \"data\": {\"action\": \"post-sales\", \"target\": {\"systemId\": \"<paste-an-@systemId-from-a-query-row>\"}, \"args\": {\"ship\": true, \"invoice\": true}}}"}
+
+###
+# skill — fetch the protocol-education guide (progressive disclosure)
+# Prereq: set Skill Doc Url on the Wicket Setup card (public HTTPS markdown); unset → 404.
+# Expected: response.value = { title, description?, sections: [...] } for mode "toc".
+#           Use mode "section" + data.section for one H2 section, or mode "full" for everything.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-14",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": { "mode": "toc" }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.skill
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-14\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"mode\": \"toc\"}}"}
+
+###
+# pageUrl — resolve a BC web-client deep link for one record
+# Prereq: table 18 must be exposed for read (Allow Read) in Wicket Exposure. Paste an @systemId
+#         (preferred) or @recordId from a prior query row; if both are passed, systemId wins.
+#         data.table takes a table name or "#<number>" (e.g. "#18"). Optional data.pageId
+#         overrides the table's default lookup page.
+# Expected: response.value = { pageUrl, pageId }. Not exposed → 403 (type .../not-exposed);
+#           record missing/out of scope → 404 (type .../unknown-record); table without a default
+#           lookup page and no pageId → 404 (type .../no-page) — retry with an explicit pageId.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-15",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": {
+#     "table": "Customer",
+#     "systemId": "<paste-an-@systemId-from-a-query-row>"
+#   }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.pageUrl
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-15\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"table\": \"Customer\", \"systemId\": \"<paste-an-@systemId-from-a-query-row>\"}}"}
+
+###
+# whoAmI — report the calling principal and endpoint posture (no data needed)
+# Expected: response.value = { userSecurityId, userId, company, readOnly, fieldPolicy,
+#           unmaskGranted, activeExceptions, strongEtag, serverTime } — verifies which
+#           principal/tenant/posture this token/connection actually resolves to.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-16",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": {}
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.whoAmI
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-16\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {}}"}
+
+###
+# query a masked field — Customer E-Mail (field 102)
+# Prereq: table 18 exposed for read; a Wicket Field Exposure row for table 18, field 102 with
+#         Read Access = Masked and Mask Profile = EMAIL (set up here so the example does not depend
+#         on the field's DataClassification); the caller does NOT hold Wicket - Unmask and has no exception.
+# Expected: each row carries "E-Mail" as a mask rendering such as "j****@example.com" and
+#           "@masked": ["E-Mail"].
+#           With "unmask": false added to data the result is the baseline view even for a privileged caller.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-17",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": { "tableId": 18, "select": ["No.", "E-Mail"], "top": 2 }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.query
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-17\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"tableId\": 18, \"select\": [\"No.\", \"E-Mail\"], \"top\": 2}}"}
+
+###
+# filter on the same masked field (same prereq as above) — refused, because a filter would let a
+# caller recover the value
+# Expected: 403, problem type .../field-masked
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-18",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": { "tableId": 18, "select": ["No."], "filter": "startswith(\"E-Mail\", 'j')", "top": 2 }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.query
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-18\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"tableId\": 18, \"select\": [\"No.\"], \"filter\": \"startswith(\\\"E-Mail\\\", 'j')\", \"top\": 2}}"}

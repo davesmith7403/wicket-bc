@@ -1,0 +1,39 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/AL-Go/main/Actions/settings.schema.json",
+  "_comment": "AL-Go for GitHub repository settings for the Wicket repo. SINGLE-PROJECT, MULTI-APP layout: the AL-Go project is the repository root and every app sits in its OWN subfolder - main app 'app/', companion 'actions/', tests 'test/'. NEVER put an app folder at '.': the AL compiler globs *.al recursively, so a root app folder swallows the sibling apps (an early run compiled 105 files instead of 71 and failed with AL0185 Library Assert + AL0297 50200-out-of-range). AL has no file-exclude mechanism, so separate folders are the only fix. The companion is in appFolders so a break in the posting wrappers fails the build; it depends on the main app by id and AL-Go orders app folders by dependency, so 'app' always compiles before 'actions'.",
+
+  "type": "PTE",
+  "country": "w1",
+  "_comment_artifact": "Empty => AL-Go derives the artifact from app.json's 'application' dependency (26.0.0.0), so it tracks the app target automatically and cannot drift. (The previous '//w1/24/latest' both pinned BC 24 against this BC 26 app AND had its version/country segments swapped, parsing version as 'w1'.)",
+  "artifact": "",
+  "appFolders": [ "app", "actions" ],
+  "testFolders": [ "test", "actions-test" ],
+  "bcptTestFolders": [],
+
+  "_comment_version": "Runtime 16.0 / BC 26 (see app.json platform/application 26.0.0.0). 'repoVersion' drives the build/version number AL-Go stamps into the apps; bump alongside app.json. RunOnWindows because BcContainerHelper/containers require Windows runners.",
+  "repoVersion": "1.3",
+  "runs-on": "windows-latest",
+  "shell": "powershell",
+  "githubRunner": "windows-latest",
+
+  "_comment_tests": "Build the test app and run its tests in a sandbox container on every build. enableCodeCop/UICop give linting parity with the AL extension defaults; FailOn=error keeps PRs green only on clean compiles.",
+  "doNotRunTests": false,
+  "doNotPublishApps": false,
+  "enableCodeCop": true,
+  "enableUICop": true,
+  "enablePerTenantExtensionCop": true,
+  "failOn": "error",
+
+  "_comment_ranges": "Declared id ranges for reference (also enforced by app.json). Main app 94100-94199, companion actions app 94200-94249, test app 94300-94349, companion tests 94350-94399 (renumbered from 50100/60100 on 2026-10-10).",
+  "idRanges": [
+    { "from": 94100, "to": 94199 },
+    { "from": 94200, "to": 94249 },
+    { "from": 94300, "to": 94349 },
+    { "from": 94350, "to": 94399 }
+  ],
+
+  "_comment_template": "templateUrl lets 'Update AL-Go System Files' know where to pull workflow/script updates from. Point at AL-Go-PTE (per-tenant extension template).",
+  "templateUrl": "https://github.com/microsoft/AL-Go-PTE@main",
+
+  "_comment_secrets": "No secrets are required for plain CI of a w1 PTE that builds against public BC artifacts. A licenseFileUrl secret is only needed if you compile/publish AppSource apps or use objects above the standard PTE range. Deployment secrets (xxx-AuthContext) are only needed if you later add CD environments."
+}

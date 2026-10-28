@@ -1,0 +1,22 @@
+// Copy to launch.json and fill in your own values. launch.json is gitignored:
+// it names a real tenant and environment, which are yours (and, on a consulting
+// engagement, your customer's) — not repo content.
+//
+//   environmentName  the BC environment to publish to, e.g. "SANDBOX"
+//   tenant           your Entra ID tenant GUID (not a secret, but not ours to publish)
+//
+// AAD auth is required for BC SaaS; device-code sign-in happens on first F5.
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "al",
+      "request": "launch",
+      "name": "Wicket – Sandbox",
+      "environmentType": "Sandbox",
+      "environmentName": "<sandbox>",
+      "tenant": "<tenant-guid>",
+      "authentication": "AAD"
+    }
+  ]
+}

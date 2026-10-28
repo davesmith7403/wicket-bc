@@ -1,0 +1,22 @@
+.alpackages/
+.snapshots/
+.altestrunner/
+*.app
+.vscode/.altestrunner.json
+.vscode/.alcache/
+
+# Your own sandbox target (tenant GUID + environment name). Never tracked —
+# copy launch.json.example and fill it in. Previously held back with
+# skip-worktree, which silently fails on a fresh clone and on `git add -f`.
+**/.vscode/launch.json
+
+# AL-Go / Run-AlPipeline local build artifacts
+output/
+TestResults.xml
+BuildOutput.txt
+
+# macOS
+.DS_Store
+.DS_Store?
+**/.DS_Store
+

@@ -1,0 +1,141 @@
+name: 'Standalone Build (BcContainerHelper)'
+
+# ---------------------------------------------------------------------------
+# SELF-CONTAINED CI for Wicket, with NO dependency on the AL-Go system files
+# (microsoft/AL-Go-Actions). It uses BcContainerHelper's Run-AlPipeline directly
+# to: download BC 26 (w1) symbols, compile the core app (app/), the Actions
+# companion (actions/) and the test app (test/), spin up a BC 26 sandbox
+# container, publish all three, run the test app's tests, and upload the
+# compiled .app files + the JUnit test results.
+#
+# WHY THIS EXISTS:
+#   The CICD.yaml / PullRequestHandler.yaml / _BuildALGoProject.yaml in this folder
+#   are the genuine AL-Go for GitHub workflows and are the recommended path. They
+#   rely on the rest of the AL-Go "system files" (the .AL-Go scripts and the
+#   pinned microsoft/AL-Go-Actions@v9.0 actions). If you have NOT yet onboarded
+#   this repo to AL-Go (i.e. you never ran the AL-Go bootstrap / "Update AL-Go
+#   System Files"), the AL-Go actions still resolve fine from GitHub, so the AL-Go
+#   workflows work out of the box. This standalone workflow is a transparent,
+#   single-file alternative you fully control and can debug locally with the exact
+#   same Run-AlPipeline call.
+#
+# HOW TO MIGRATE TO FULL AL-Go (and retire this file):
+#   1. Keep CICD.yaml, PullRequestHandler.yaml, _BuildALGoProject.yaml and
+#      AL-Go-Settings.json (already in this repo).
+#   2. From an admin GitHub session run the "Update AL-Go System Files" workflow
+#      (templateUrl in AL-Go-Settings.json points at microsoft/AL-Go-PTE@main).
+#      That pulls in the supporting .github/*.ps1 scripts AL-Go expects.
+#   3. Delete this Standalone-Build.yaml so tests don't run twice.
+#
+# Requires a Windows runner with Docker (windows-latest provides this).
+# No repo secrets are required for a w1 PTE built against public BC artifacts.
+# ---------------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+  # Disabled by default so it does not run alongside the AL-Go workflows above.
+  # Remove the leading '#' on the push/pull_request blocks to use this instead.
+  #push:
+  #  branches: [ 'main', 'release/*', 'feature/*' ]
+  #  paths-ignore: [ '**.md' ]
+  #pull_request:
+  #  branches: [ 'main' ]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: powershell
+
+jobs:
+  build-and-test:
+    name: Compile all apps + run tests (BC 26 sandbox)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install BcContainerHelper
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module BcContainerHelper -Force -AllowClobber
+          Import-Module BcContainerHelper -DisableNameChecking
+          Write-Host "BcContainerHelper version: $((Get-Module BcContainerHelper).Version)"
+
+      - name: Run-AlPipeline (symbols, compile app + actions + test, run tests)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module BcContainerHelper -DisableNameChecking
+
+          $baseFolder    = $env:GITHUB_WORKSPACE
+          $containerName  = 'wicket-ci'
+          $outputFolder   = Join-Path $baseFolder 'output'
+          $testResultsFile = Join-Path $baseFolder 'TestResults.xml'
+          New-Item -ItemType Directory -Force -Path $outputFolder | Out-Null
+
+          # BC 26 (w1) sandbox artifacts. Matches app.json platform/application 26.0.0.0
+          # and runtime 16.0. -select Latest tracks the newest 26.x build.
+          $artifactUrl = Get-BCArtifactUrl -type Sandbox -country w1 -version '26' -select Latest
+
+          # App folders are RELATIVE to $baseFolder, one app per folder, and must match
+          # .github/AL-Go-Settings.json:
+          #   'app'     -> core app        (app/app.json)
+          #   'actions' -> Actions companion (actions/app.json, depends on the core by id;
+          #                Run-AlPipeline orders app folders by dependency)
+          #   'test'    -> test app        (test/app.json), built as a test app and its tests executed.
+          # NEVER use '.' here: the AL compiler globs *.al recursively, so a root app folder
+          # swallows the sibling apps (an earlier AL-Go run compiled 105 files instead of 71 and
+          # failed with AL0185 Library Assert + AL0297 50200-out-of-range).
+          $appFolders  = @('app', 'actions')
+          $testFolders = @('test')
+
+          # Throwaway container credentials (sandbox is ephemeral per run).
+          $password = ConvertTo-SecureString -String ([guid]::NewGuid().ToString()) -AsPlainText -Force
+          $credential = New-Object System.Management.Automation.PSCredential('admin', $password)
+
+          Run-AlPipeline `
+            -pipelineName 'Wicket CI' `
+            -containerName $containerName `
+            -artifact $artifactUrl `
+            -baseFolder $baseFolder `
+            -appFolders $appFolders `
+            -testFolders $testFolders `
+            -credential $credential `
+            -installApps @() `
+            -installTestApps @() `
+            -appOutputFolder $outputFolder `
+            -testResultsFile $testResultsFile `
+            -testResultsFormat 'JUnit' `
+            -azureDevOps:$false `
+            -gitHubActions:$true `
+            -failOn 'error' `
+            -enableCodeCop `
+            -enableUICop `
+            -enablePerTenantExtensionCop `
+            -keepContainer:$false
+
+      - name: Upload compiled apps
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wicket-apps
+          path: output/*.app
+          if-no-files-found: warn
+
+      - name: Upload test results
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wicket-test-results
+          path: TestResults.xml
+          if-no-files-found: warn
+
+      - name: Publish test report
+        if: success() || failure()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Wicket Tests
+          path: TestResults.xml
+          reporter: java-junit
+          fail-on-error: true

@@ -1,0 +1,4 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/AL-Go/main/Actions/settings.schema.json",
+  "_comment": "AL-Go PROJECT marker for this single-project-at-root repo. Its presence makes DetermineProjectsToBuild discover the repository root as a buildable project; without it the build matrix resolves to zero projects and CI/PR runs are vacuously green. App/test folder mapping (appFolders 'app' + 'actions', testFolders 'test'), BC target, country, linters, and id ranges are inherited from ../.github/AL-Go-Settings.json. Verified: the matrix populates (a 'Build . (Default)' job runs), so this marker works."
+}

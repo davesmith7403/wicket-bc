@@ -1,0 +1,296 @@
+# Wicket Actions (companion) — smoke-test recipe
+# VS Code REST Client  (install "humao.rest-client" extension)
+#
+# These exercise the "Wicket Actions - Base" companion: posting documents and journals through
+# Wicket's invoke plane. They complement docs/smoke-test.http (which covers the core plane).
+#
+# Prerequisites:
+#   1. The "Wicket Actions - Base" companion app is installed. Its install codeunit enrols the four
+#      posting wrappers in the Procedure Catalog (for raw invoke) AND the four named actions
+#      (post-sales / post-purchase / post-gen-journal / post-item-journal) in the Action Catalog —
+#      everything enrols DISABLED. An admin must opt in per row: Allow Run on the Bcmag Action
+#      Catalog page for the named actions (else 403 ".../action-disabled"), and Allow Run on the
+#      Procedure Catalog plus Allow Invoke on the exposure row for raw invoke (else 403).
+#   2. The calling principal holds standard BC posting permissions (e.g. D365 sales/purchase posting
+#      permission sets) in addition to a Wicket role of `Wicket - Execute` or above (invoke/action need
+#      the Execute rung; a lower role gets 403 ".../role-forbidden") and the companion's `Wicket Act`
+#      set. (Sections 1-2 insert through the generic write plane and need `Wicket - Edit`.)
+#   3. Replace the coordinates and paste a bearer token, exactly as in docs/smoke-test.http.
+#   4. Every invoke/action call below carries an envelope `idempotencyKey`. On a fresh install Wicket
+#      Setup "Require Key For Actions" is ON, and an invoke/action without a key is refused with
+#      400 ".../idempotency-key-required" (section 12). Use a NEW key per logical post; resending the
+#      same key + body replays the stored result instead of posting twice. Refusals raised before
+#      anything ran (read-only, role-forbidden, not-exposed, invoke-/action-disabled) are not cached:
+#      fix the gate and resend with the SAME key.
+#
+# Expected results are noted after each request.
+#
+# Wire format: the body is {"envelope": "<envelope JSON as a string>"}; the answer's "value" is
+# a string holding the result JSON (BC publishes bound actions only for simple parameter types). Every call still returns HTTP 200 with the logical
+# outcome in the body (a value object on success, an RFC 7807 problem with type+status on failure).
+
+@base    = https://api.businesscentral.dynamics.com/v2.0/<tenantId>/<env>/api/wicket/rpc/v1.0
+@company = <companyId>
+@token   = <paste-bearer-token-here>
+@ep      = {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV
+
+###
+# 0. capabilities — confirm the actions are reachable
+# Expected: response.value.operations includes "invoke" and "action"; response.value.actions lists
+#           the enrolled actions that have Allow Run = true (a disabled action is absent).
+# envelope (sent serialised as the "envelope" string):
+# { "id": "act-0", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "data": {} }
+POST {{ep}}.capabilities
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-0\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"data\": {}}"}
+
+###
+# 1. Create a sales order header (insert into table 36). No. Series fills "No." on insert.
+#    Requires table 36 exposed for insert and the principal's write permission.
+# Expected: value carries the created record's @recordId / @systemId and the assigned "No.".
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-1", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke",
+#   "data": {
+#     "tableId": 36,
+#     "values": { "Document Type": "Order", "Sell-to Customer No.": "10000" }
+#   }
+# }
+# @name createOrder
+POST {{ep}}.insert
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-1\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"data\": {\"tableId\": 36, \"values\": {\"Document Type\": \"Order\", \"Sell-to Customer No.\": \"10000\"}}}"}
+
+# The answer's "value" is a JSON string, which REST Client cannot path into: parse it, then put the
+# created order's "No." here for the requests below.
+@orderNo = <No. of the order created above>
+
+###
+# 2. Add one line to the order (insert into table 37). Send fields in validation order:
+#    Type -> No. (pulls description/price) -> Quantity.
+# Expected: a value with the created line.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-2", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke",
+#   "data": {
+#     "tableId": 37,
+#     "values": {
+#       "Document Type": "Order",
+#       "Document No.": "{{orderNo}}",
+#       "Type": "Item",
+#       "No.": "1000",
+#       "Quantity": 1
+#     }
+#   }
+# }
+POST {{ep}}.insert
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-2\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"data\": {\"tableId\": 37, \"values\": {\"Document Type\": \"Order\", \"Document No.\": \"{{orderNo}}\", \"Type\": \"Item\", \"No.\": \"1000\", \"Quantity\": 1}}}"}
+
+###
+# 3. Post the sales order (ship + invoice) via the companion action.
+# Expected: value = { posted: true, sourceDocumentType: "Order", sourceNo: "<order>",
+#                     postedShipmentNo: "...", postedInvoiceNo: "..." }
+#           A validation failure comes back as a 422 problem carrying the posting error text.
+#           If Sales-Post committed but a step after its commit failed (an OnAfterPost subscriber,
+#           the analysis-view refresh), the result is still posted:true, plus postCommitWarning (the
+#           error text) and postCommitEvidence (what proved the posting) — the document IS posted;
+#           do not post it again.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-3", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "idempotencyKey": "smoke-act-3-<unique>",
+#   "data": {
+#     "codeunitId": 94200,
+#     "procedure": "PostSalesDocument",
+#     "args": { "documentType": "Order", "no": "{{orderNo}}", "ship": true, "invoice": true }
+#   }
+# }
+POST {{ep}}.invoke
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-3\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"idempotencyKey\": \"smoke-act-3-<unique>\", \"data\": {\"codeunitId\": 94200, \"procedure\": \"PostSalesDocument\", \"args\": {\"documentType\": \"Order\", \"no\": \"{{orderNo}}\", \"ship\": true, \"invoice\": true}}}"}
+
+###
+# 3b. Alternative addressing — post by the header's SystemId (from a query's @systemId), no doc no.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-3b", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "idempotencyKey": "smoke-act-3b-<unique>",
+#   "data": {
+#     "codeunitId": 94200,
+#     "procedure": "PostSalesDocument",
+#     "args": { "systemId": "00000000-0000-0000-0000-000000000000", "ship": true, "invoice": true }
+#   }
+# }
+POST {{ep}}.invoke
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-3b\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"idempotencyKey\": \"smoke-act-3b-<unique>\", \"data\": {\"codeunitId\": 94200, \"procedure\": \"PostSalesDocument\", \"args\": {\"systemId\": \"00000000-0000-0000-0000-000000000000\", \"ship\": true, \"invoice\": true}}}"}
+
+###
+# 4. Post a purchase document (receive + invoice). Replace <purch-order-no> with a real order.
+#    A Return Order defaults to ship + invoice (a sales return order to receive + invoice); for a
+#    Credit Memo or Return Order, postedInvoiceNo is the posted CREDIT MEMO number.
+# Expected: value = { posted: true, postedReceiptNo: "...", postedInvoiceNo: "..." }
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-4", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "idempotencyKey": "smoke-act-4-<unique>",
+#   "data": {
+#     "codeunitId": 94202,
+#     "procedure": "PostPurchaseDocument",
+#     "args": { "documentType": "Order", "no": "<purch-order-no>", "receive": true, "invoice": true }
+#   }
+# }
+POST {{ep}}.invoke
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-4\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"idempotencyKey\": \"smoke-act-4-<unique>\", \"data\": {\"codeunitId\": 94202, \"procedure\": \"PostPurchaseDocument\", \"args\": {\"documentType\": \"Order\", \"no\": \"<purch-order-no>\", \"receive\": true, \"invoice\": true}}}"}
+
+###
+# 5. Post a general journal batch (also covers payment / cash-receipt journals — other templates).
+#    Replace with a template/batch that has lines ready to post.
+# Expected: value = { posted: true, template: "GENERAL", batch: "DEFAULT",
+#                     glRegisterNo, firstEntryNo, lastEntryNo } (or noEntriesPosted: true)
+#           An empty batch → 422 "... has no lines to post". A template with Force Posting Report,
+#           or a Jobs template whose Source Code is the Job G/L WIP code, is refused (422) exactly as
+#           Gen. Jnl.-Post refuses it.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-5", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "idempotencyKey": "smoke-act-5-<unique>",
+#   "data": {
+#     "codeunitId": 94203,
+#     "procedure": "PostGeneralJournal",
+#     "args": { "template": "GENERAL", "batch": "DEFAULT" }
+#   }
+# }
+POST {{ep}}.invoke
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-5\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"idempotencyKey\": \"smoke-act-5-<unique>\", \"data\": {\"codeunitId\": 94203, \"procedure\": \"PostGeneralJournal\", \"args\": {\"template\": \"GENERAL\", \"batch\": \"DEFAULT\"}}}"}
+
+###
+# 6. Post an item journal batch.
+# Expected: value = { posted: true, template: "ITEM", batch: "DEFAULT",
+#                     itemRegisterNo, firstEntryNo, lastEntryNo } (or noEntriesPosted: true)
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-6", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "idempotencyKey": "smoke-act-6-<unique>",
+#   "data": {
+#     "codeunitId": 94204,
+#     "procedure": "PostItemJournal",
+#     "args": { "template": "ITEM", "batch": "DEFAULT" }
+#   }
+# }
+POST {{ep}}.invoke
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-6\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"idempotencyKey\": \"smoke-act-6-<unique>\", \"data\": {\"codeunitId\": 94204, \"procedure\": \"PostItemJournal\", \"args\": {\"template\": \"ITEM\", \"batch\": \"DEFAULT\"}}}"}
+
+###
+# 7. Negative — a disabled action. Turn Allow Run off on the Procedure Catalog row, then:
+# Expected: 403 problem, type ".../invoke-disabled".
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-7", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "idempotencyKey": "smoke-act-7-<unique>",
+#   "data": { "codeunitId": 94200, "procedure": "PostSalesDocument", "args": { "documentType": "Order", "no": "{{orderNo}}" } }
+# }
+POST {{ep}}.invoke
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-7\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"idempotencyKey\": \"smoke-act-7-<unique>\", \"data\": {\"codeunitId\": 94200, \"procedure\": \"PostSalesDocument\", \"args\": {\"documentType\": \"Order\", \"no\": \"{{orderNo}}\"}}}"}
+
+###
+# 8. Negative — read-only mode blocks invoke entirely.
+# Set "Read-Only Mode" on the Wicket Setup card, then any post invoke returns:
+# Expected: 403 problem, type ".../read-only".
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-8", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "idempotencyKey": "smoke-act-8-<unique>",
+#   "data": { "codeunitId": 94203, "procedure": "PostGeneralJournal", "args": { "template": "GENERAL", "batch": "DEFAULT" } }
+# }
+POST {{ep}}.invoke
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-8\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"idempotencyKey\": \"smoke-act-8-<unique>\", \"data\": {\"codeunitId\": 94203, \"procedure\": \"PostGeneralJournal\", \"args\": {\"template\": \"GENERAL\", \"batch\": \"DEFAULT\"}}}"}
+
+###
+# 9. Same posting, via the named `action` operation — the discoverable front door over invoke.
+#    Prereq: Allow Run = true on the "post-sales" row of the Bcmag Action Catalog page (actions
+#    enrol DISABLED — without this the call returns a 403 problem, type ".../action-disabled").
+#    target.systemId (an @systemId from a query row) is merged into the wrapper args as `systemId`;
+#    alternatively pass documentType + no directly in args, as in section 3.
+# Expected: value = same shape as section 3 ({ posted: true, sourceDocumentType, sourceNo, ... }).
+#           Unknown action → 404 with a suggest list; wrapper error → 422 ".../action-failed".
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-9", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "idempotencyKey": "smoke-act-9-<unique>",
+#   "data": {
+#     "action": "post-sales",
+#     "target": { "systemId": "<paste-an-@systemId-from-a-query-row>" },
+#     "args": { "ship": true, "invoice": true }
+#   }
+# }
+POST {{ep}}.action
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-9\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"idempotencyKey\": \"smoke-act-9-<unique>\", \"data\": {\"action\": \"post-sales\", \"target\": {\"systemId\": \"<paste-an-@systemId-from-a-query-row>\"}, \"args\": {\"ship\": true, \"invoice\": true}}}"}
+
+###
+# 10. Post a general journal batch via the named action (Allow Run on the "post-gen-journal" row).
+# Expected: value = { posted: true, template: "GENERAL", batch: "DEFAULT", glRegisterNo, ... } — same as section 5.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-10", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "idempotencyKey": "smoke-act-10-<unique>",
+#   "data": {
+#     "action": "post-gen-journal",
+#     "args": { "template": "GENERAL", "batch": "DEFAULT" }
+#   }
+# }
+POST {{ep}}.action
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-10\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"idempotencyKey\": \"smoke-act-10-<unique>\", \"data\": {\"action\": \"post-gen-journal\", \"args\": {\"template\": \"GENERAL\", \"batch\": \"DEFAULT\"}}}"}
+
+###
+# 11. Negative — a named action with Allow Run off (the enrolment default). Leave (or turn) Allow
+#     Run off on the "post-item-journal" Action Catalog row, then:
+# Expected: 403 problem, type ".../action-disabled".
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-11", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "idempotencyKey": "smoke-act-11-<unique>",
+#   "data": { "action": "post-item-journal", "args": { "template": "ITEM", "batch": "DEFAULT" } }
+# }
+POST {{ep}}.action
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-11\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"idempotencyKey\": \"smoke-act-11-<unique>\", \"data\": {\"action\": \"post-item-journal\", \"args\": {\"template\": \"ITEM\", \"batch\": \"DEFAULT\"}}}"}
+
+###
+# 12. Negative — no idempotency key while Wicket Setup "Require Key For Actions" is on (fresh-install
+#     default; an upgraded tenant starts with it off).
+# Expected: 400 problem, type ".../idempotency-key-required". Nothing ran and nothing was stored.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-12", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke",
+#   "data": { "action": "post-gen-journal", "args": { "template": "GENERAL", "batch": "DEFAULT" } }
+# }
+POST {{ep}}.action
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-12\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"data\": {\"action\": \"post-gen-journal\", \"args\": {\"template\": \"GENERAL\", \"batch\": \"DEFAULT\"}}}"}
