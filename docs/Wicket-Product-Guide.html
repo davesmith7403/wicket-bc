@@ -337,7 +337,7 @@ td:first-child { color: var(--ink); }
     <span class="topbar-name">Wicket</span>
     <span class="topbar-sep" aria-hidden="true"></span>
     <span class="topbar-doc">Product Guide</span>
-    <span class="pill">App 1.3 · MCP 2.3 · 2026-10-28</span>
+    <span class="pill">App 1.3 · MCP 2.4 · 2026-10-28</span>
   </header>
   <nav class="toc" id="toc" aria-label="Contents">
     <div class="toc-head"><span>Contents</span></div>
@@ -361,7 +361,7 @@ td:first-child { color: var(--ink); }
 <p><strong>Generic JSON RPC over Microsoft Dynamics 365 Business Central, built for LLM agents.</strong></p>
 <div class="table-wrap"><table class="meta"><tbody><tr>
 <td>Product</td>
-<td>Wicket 1.3 (publisher Dave The Wicketkeeper) with the optional companion <code>Wicket Actions - Base</code> 0.3 and the <code>wicket-mcp</code> server 2.3</td>
+<td>Wicket 1.3 (publisher Dave The Wicketkeeper) with the optional companion <code>Wicket Actions - Base</code> 0.3 and the <code>wicket-mcp</code> server 2.4</td>
 </tr>
 <tr>
 <td>Platform</td>
@@ -2771,7 +2771,8 @@ Content-Type: application/json
 <pre data-lang="text"><code class="language-text">/plugin marketplace add davesmith7403/wicket
 /plugin install wicket@wicket
 </code></pre>
-<p>To run the server standalone, clone that repository:</p>
+<p>Then run <strong><code>/wicket:setup</code></strong>. It asks how you sign in: in a browser window (recommended), with a device code, or as an app with a client secret. It works out the tenant from a pasted Business Central address or a work email, lists the environments and companies to pick from, then saves and tests the connection. No GUID is typed by hand, and no restart is needed. Without a client ID of your own, Wicket uses its default client, so no app registration is needed. A client secret never passes through the chat: setup gives you a Keychain command to run yourself. The same command fixes a failing connection, changes the default and removes connections. The server starts even when nothing is configured, and every tool then answers <code>503 connection-unavailable</code> pointing to <code>/wicket:setup</code>.</p>
+<p>To run the server standalone, or to configure connections by hand, clone that repository:</p>
 <pre data-lang="bash"><code class="language-bash">cd mcp
 bun install
 cp .env.example .env
@@ -2833,8 +2834,8 @@ cp .env.example .env
 <p>Or in Claude Desktop&#39;s <code>claude_desktop_config.json</code>:</p>
 <pre data-lang="json"><code class="language-json">{ &quot;mcpServers&quot;: { &quot;wicket&quot;: { &quot;command&quot;: &quot;bun&quot;, &quot;args&quot;: [&quot;run&quot;, &quot;/absolute/path/to/wicket/mcp/src/index.ts&quot;] } } }
 </code></pre>
-<p>Secrets resolve per connection in this order: macOS Keychain (<code>keychainService</code> + <code>keychainAccount</code>, stored with <code>security add-generic-password -s wicket -a &lt;name&gt; -w &#39;&lt;secret&gt;&#39;</code>), an environment variable named by <code>secretEnv</code>, or an inline <code>clientSecret</code> for development only. The server validates the whole file at start and refuses unknown keys, missing secret sources, braced GUIDs, a tenant that is not a GUID or domain, an environment name outside <code>[A-Za-z0-9_-]</code>, and a <code>baseUrl</code> that is not https (the bearer token travels on every request).</p>
-<p>A <code>device_code</code> connection never blocks a tool call on the human: the first call answers a <code>401 sign-in-required</code> problem carrying the verification URL and code (<code>verificationUri</code>, <code>userCode</code>); the sign-in keeps running in the background and the next call after the user signs in picks up the token. On a <code>401</code> from Business Central the server mints a fresh token and retries once.</p>
+<p>Secrets resolve per connection in this order: macOS Keychain (<code>keychainService</code> + <code>keychainAccount</code>, stored with <code>security add-generic-password -s wicket -a &lt;name&gt; -w &#39;&lt;secret&gt;&#39;</code>), an environment variable named by <code>secretEnv</code>, or an inline <code>clientSecret</code> for development only. The server validates the whole file at start. It sets an entry aside, with its reason, for any of these: an unknown key, a missing secret source, a braced GUID, a tenant that is not a GUID or a domain, an environment name outside <code>[A-Za-z0-9_-]</code>, or a <code>baseUrl</code> that is not https (the bearer token travels on every request). The other entries still load. <code>wicket_connections</code> lists the set-aside entries under <code>rejected</code>.</p>
+<p>A <code>device_code</code> or <code>browser</code> connection never blocks a tool call on the human. The first call answers a <code>401 sign-in-required</code> problem: for device code it carries the verification URL and code (<code>verificationUri</code>, <code>userCode</code>); for browser sign-in a window has opened. The sign-in keeps running in the background, and the next call after the user signs in picks up the token. On a <code>401</code> from Business Central the server mints a fresh token and retries once.</p>
 <h2 id="35-tools">35. Tools</h2>
 <div class="table-wrap"><table><thead><tr>
 <th>Tool</th>
@@ -2902,12 +2903,17 @@ cp .env.example .env
 <td>List connections; switch the session&#39;s active one. Prefer the per-call <code>connection</code> parameter.</td>
 </tr>
 <tr>
+<td><code>wicket_setup</code></td>
+<td>local, Entra and Business Central&#39;s own APIs</td>
+<td>Guided setup behind <code>/wicket:setup</code>. Actions: <code>status</code>, <code>locate</code>, <code>signin</code>, <code>environments</code>, <code>companies</code>, <code>save</code>, <code>remove</code>, <code>setDefault</code>. A saved connection works at once.</td>
+</tr>
+<tr>
 <td><code>wicket_skill</code></td>
 <td>local</td>
 <td>The bundled usage guide — SKILL.md plus reference files (tools, filters, errors, writes, presenting, automation, tables, solutions, protocol) — with <code>toc</code> / <code>section</code> (a section or a whole file) / <code>full</code> modes.</td>
 </tr>
 </tbody></table></div>
-<p>The server sends the skill&#39;s essentials as MCP <code>instructions</code> at the handshake, so a host such as Claude Code places them in the session&#39;s system prompt before the first call; every tool carries a title and read-only/destructive annotations; a page of rows is rendered one row per line to keep results small. In Claude Code the simplest install is the <code>wicket</code> plugin (chapter 34), which brings the server, the skill and the <code>/wicket:orient</code> and <code>/wicket:inventory</code> commands in one step. Without it, the skill (<code>skills/wicket-usage/</code> in the plugin repository) is installed in Claude Code by placing it under <code>~/.claude/skills/</code> or <code>.claude/skills/</code>, or uploaded to claude.ai as a zip under Customize › Skills, from where it also syncs into Claude Code and Cowork.</p>
+<p>The server sends the skill&#39;s essentials as MCP <code>instructions</code> at the handshake, so a host such as Claude Code places them in the session&#39;s system prompt before the first call; every tool carries a title and read-only/destructive annotations; a page of rows is rendered one row per line to keep results small. In Claude Code the simplest install is the <code>wicket</code> plugin (chapter 34), which brings the server, the skill and the <code>/wicket:setup</code>, <code>/wicket:orient</code> and <code>/wicket:inventory</code> commands in one step. Without it, the skill (<code>skills/wicket-usage/</code> in the plugin repository) is installed in Claude Code by placing it under <code>~/.claude/skills/</code> or <code>.claude/skills/</code>, or uploaded to claude.ai as a zip under Customize › Skills, from where it also syncs into Claude Code and Cowork.</p>
 <p>Every BC-touching tool accepts <code>connection: &quot;&lt;name&gt;&quot;</code>. A problem document is returned as an MCP tool error with the full RFC 7807 body, so the agent sees <code>detail</code> and <code>suggest</code>. A connection marked <code>readOnly: true</code> refuses the five mutating tools with <code>403 connection-read-only</code> before a token is minted; this complements, and does not replace, Wicket&#39;s Read-Only Mode and the permission sets.</p>
 <p>When a call&#39;s answer is lost (a timeout, or a 5xx from the gateway), the server&#39;s problem says what to do next according to the call: a read is safe to retry; a write sent with an <code>idempotencyKey</code> is resent with the same key (it replays, or answers <code>idempotency-in-progress</code> / <code>idempotency-indeterminate</code>); a write sent without one must not be blindly retried: query the affected records first.</p>
 <hr class="part-break">

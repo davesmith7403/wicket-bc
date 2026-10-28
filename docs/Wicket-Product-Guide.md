@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Product | Wicket 1.3 (publisher Dave The Wicketkeeper) with the optional companion `Wicket Actions - Base` 0.3 and the `wicket-mcp` server 2.3 |
+| Product | Wicket 1.3 (publisher Dave The Wicketkeeper) with the optional companion `Wicket Actions - Base` 0.3 and the `wicket-mcp` server 2.4 |
 | Platform | Business Central 26 and later, SaaS (online). AL runtime 16.0. The core app depends on the System Application only. |
 | Guide version | 2026-10-28 |
 | Audience | Part I is for everyone. Parts II and III are for the Business Central administrator or consultant who installs and configures Wicket. Parts IV to VI are for the developer or agent builder who calls it. |
@@ -1498,7 +1498,9 @@ The MCP server, the plugin and the usage skill live in their own repository, [da
 /plugin install wicket@wicket
 ```
 
-To run the server standalone, clone that repository:
+Then run **`/wicket:setup`**. It asks how you sign in: in a browser window (recommended), with a device code, or as an app with a client secret. It works out the tenant from a pasted Business Central address or a work email, lists the environments and companies to pick from, then saves and tests the connection. No GUID is typed by hand, and no restart is needed. Without a client ID of your own, Wicket uses its default client, so no app registration is needed. A client secret never passes through the chat: setup gives you a Keychain command to run yourself. The same command fixes a failing connection, changes the default and removes connections. The server starts even when nothing is configured, and every tool then answers `503 connection-unavailable` pointing to `/wicket:setup`.
+
+To run the server standalone, or to configure connections by hand, clone that repository:
 
 ```bash
 cd mcp
@@ -1530,9 +1532,9 @@ Or in Claude Desktop's `claude_desktop_config.json`:
 { "mcpServers": { "wicket": { "command": "bun", "args": ["run", "/absolute/path/to/wicket/mcp/src/index.ts"] } } }
 ```
 
-Secrets resolve per connection in this order: macOS Keychain (`keychainService` + `keychainAccount`, stored with `security add-generic-password -s wicket -a <name> -w '<secret>'`), an environment variable named by `secretEnv`, or an inline `clientSecret` for development only. The server validates the whole file at start and refuses unknown keys, missing secret sources, braced GUIDs, a tenant that is not a GUID or domain, an environment name outside `[A-Za-z0-9_-]`, and a `baseUrl` that is not https (the bearer token travels on every request).
+Secrets resolve per connection in this order: macOS Keychain (`keychainService` + `keychainAccount`, stored with `security add-generic-password -s wicket -a <name> -w '<secret>'`), an environment variable named by `secretEnv`, or an inline `clientSecret` for development only. The server validates the whole file at start. It sets an entry aside, with its reason, for any of these: an unknown key, a missing secret source, a braced GUID, a tenant that is not a GUID or a domain, an environment name outside `[A-Za-z0-9_-]`, or a `baseUrl` that is not https (the bearer token travels on every request). The other entries still load. `wicket_connections` lists the set-aside entries under `rejected`.
 
-A `device_code` connection never blocks a tool call on the human: the first call answers a `401 sign-in-required` problem carrying the verification URL and code (`verificationUri`, `userCode`); the sign-in keeps running in the background and the next call after the user signs in picks up the token. On a `401` from Business Central the server mints a fresh token and retries once.
+A `device_code` or `browser` connection never blocks a tool call on the human. The first call answers a `401 sign-in-required` problem: for device code it carries the verification URL and code (`verificationUri`, `userCode`); for browser sign-in a window has opened. The sign-in keeps running in the background, and the next call after the user signs in picks up the token. On a `401` from Business Central the server mints a fresh token and retries once.
 
 ## 35. Tools
 
@@ -1550,9 +1552,10 @@ A `device_code` connection never blocks a tool call on the human: the first call
 | `wicket_capabilities`, `wicket_page_url`, `wicket_whoami` | self-description, deep link, identity | |
 | `wicket_status`, `wicket_cancel`, `wicket_requests` | async lifecycle | The server does not poll; the agent does. |
 | `wicket_connections`, `wicket_use` | local | List connections; switch the session's active one. Prefer the per-call `connection` parameter. |
+| `wicket_setup` | local, Entra and Business Central's own APIs | Guided setup behind `/wicket:setup`. Actions: `status`, `locate`, `signin`, `environments`, `companies`, `save`, `remove`, `setDefault`. A saved connection works at once. |
 | `wicket_skill` | local | The bundled usage guide — SKILL.md plus reference files (tools, filters, errors, writes, presenting, automation, tables, solutions, protocol) — with `toc` / `section` (a section or a whole file) / `full` modes. |
 
-The server sends the skill's essentials as MCP `instructions` at the handshake, so a host such as Claude Code places them in the session's system prompt before the first call; every tool carries a title and read-only/destructive annotations; a page of rows is rendered one row per line to keep results small. In Claude Code the simplest install is the `wicket` plugin (chapter 34), which brings the server, the skill and the `/wicket:orient` and `/wicket:inventory` commands in one step. Without it, the skill (`skills/wicket-usage/` in the plugin repository) is installed in Claude Code by placing it under `~/.claude/skills/` or `.claude/skills/`, or uploaded to claude.ai as a zip under Customize › Skills, from where it also syncs into Claude Code and Cowork.
+The server sends the skill's essentials as MCP `instructions` at the handshake, so a host such as Claude Code places them in the session's system prompt before the first call; every tool carries a title and read-only/destructive annotations; a page of rows is rendered one row per line to keep results small. In Claude Code the simplest install is the `wicket` plugin (chapter 34), which brings the server, the skill and the `/wicket:setup`, `/wicket:orient` and `/wicket:inventory` commands in one step. Without it, the skill (`skills/wicket-usage/` in the plugin repository) is installed in Claude Code by placing it under `~/.claude/skills/` or `.claude/skills/`, or uploaded to claude.ai as a zip under Customize › Skills, from where it also syncs into Claude Code and Cowork.
 
 Every BC-touching tool accepts `connection: "<name>"`. A problem document is returned as an MCP tool error with the full RFC 7807 body, so the agent sees `detail` and `suggest`. A connection marked `readOnly: true` refuses the five mutating tools with `403 connection-read-only` before a token is minted; this complements, and does not replace, Wicket's Read-Only Mode and the permission sets.
 
