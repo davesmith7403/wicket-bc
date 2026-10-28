@@ -136,7 +136,7 @@ The planes are not just documentation: the shipped permission sets grant Execute
 
 ### From a compiled package
 
-Download `Wicket_<version>.app` (and, if you need posting actions, `Wicket_Actions_Base_<version>.app`) from the repository's [Releases](https://github.com/davesmith7403/wicket-bc/releases) page. Upload the core app in the Business Central admin center (**Manage Apps → Install Extension**) or through **Extension Management → Upload Extension**, and install it. Install the companion afterwards; it depends on the core app by id. The test app (`Wicket Tests`) is for development pipelines only and must not be installed in production.
+Download `Wicket_<version>.zip` (and, if you need posting actions, `Wicket_Actions_Base_<version>.zip`) from the repository's [Releases](https://github.com/davesmith7403/wicket-bc/releases) page and unzip them; GitHub does not accept `.app` attachments, so each package ships zipped, with `SHA256SUMS.txt` to check them. Upload the core app in the Business Central admin center (**Manage Apps → Install Extension**) or through **Extension Management → Upload Extension**, and install it. Install the companion afterwards; it depends on the core app by id. The test app (`Wicket Tests`) is for development pipelines only and must not be installed in production.
 
 ### From source
 

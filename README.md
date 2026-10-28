@@ -317,9 +317,10 @@ wrappers enforce Gen. Jnl.-Post's refusals (Force Posting Report, Job G/L WIP so
 
 ## Install & build
 
-**Prebuilt packages:** download `Wicket_<version>.app` and, for posting actions,
-`Wicket_Actions_Base_<version>.app` from [Releases](https://github.com/davesmith7403/wicket-bc/releases), then
-upload them in the Business Central admin center (**Manage Apps → Install Extension**), core app first.
+**Prebuilt packages:** download `Wicket_<version>.zip` and, for posting actions,
+`Wicket_Actions_Base_<version>.zip` from [Releases](https://github.com/davesmith7403/wicket-bc/releases), unzip
+them, and upload the `.app` files in the Business Central admin center (**Manage Apps → Install Extension**),
+core app first.
 
 **Building from source** — prerequisites: VS Code + the **AL Language** extension, or the `alc` compiler, plus the BC 26.0 symbol
 package. The core extension depends on Microsoft **System Application** `26.0.0.0` only; the optional
