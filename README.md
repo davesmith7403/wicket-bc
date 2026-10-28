@@ -376,7 +376,7 @@ The runtime truth always lives behind `capabilities`/`describe`.
 
 ## Documentation
 
-- [Product Guide](docs/Wicket-Product-Guide.md) — the complete manual: concepts, installation, security setup, first steps, every operation, configuration scenarios, the MCP server. Also as [PDF](docs/Wicket-Product-Guide.pdf) and a standalone [HTML page](docs/Wicket-Product-Guide.html) generated from the Markdown.
+- [Product Guide](docs/Wicket-Product-Guide.md) — the complete manual: concepts, installation, security setup, first steps, every operation, configuration scenarios, the MCP server. Also as [PDF](docs/Wicket-Product-Guide.pdf) and as a [web page](https://davesmith7403.github.io/wicket-bc/) generated from the Markdown.
 - [Entra ID setup](docs/setup-entra.md) — app registration, permission sets, read/write/invoke authority.
 - [Smoke-test recipe](docs/smoke-test.http) — one request per operation.
 - [Versioning & deprecation policy](docs/versioning.md) — what may change without notice, and how breaking changes are announced.
