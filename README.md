@@ -317,7 +317,11 @@ wrappers enforce Gen. Jnl.-Post's refusals (Force Posting Report, Job G/L WIP so
 
 ## Install & build
 
-Prerequisites: VS Code + the **AL Language** extension, or the `alc` compiler, plus the BC 26.0 symbol
+**Prebuilt packages:** download `Wicket_<version>.app` and, for posting actions,
+`Wicket_Actions_Base_<version>.app` from [Releases](https://github.com/davesmith7403/wicket-bc/releases), then
+upload them in the Business Central admin center (**Manage Apps → Install Extension**), core app first.
+
+**Building from source** — prerequisites: VS Code + the **AL Language** extension, or the `alc` compiler, plus the BC 26.0 symbol
 package. The core extension depends on Microsoft **System Application** `26.0.0.0` only; the optional
 Actions app additionally needs the Base Application symbols.
 
@@ -326,13 +330,13 @@ Actions app additionally needs the Base Application symbols.
 # Each app lives in its OWN folder. Never point alc at the repo root: it globs *.al
 # recursively, so a root compile swallows actions/ and test/ (115 files instead of 80,
 # failing AL0185 + AL0297). AL has no exclude mechanism; separate folders are the fix.
-alc /project:./app /packagecachepath:./.alpackages /out:Wicket_RPC.app
+alc /project:./app /packagecachepath:./.alpackages /out:Wicket.app
 
 # companion Actions app (optional; range 94200–94249; depends on the main app)
 alc /project:./actions /packagecachepath:./actions/.alpackages /out:Wicket_Actions_Base.app
 
 # test app (range 94300–94349; depends on the main app, Library Assert and Test Runner)
-alc /project:./test /packagecachepath:./test/.alpackages /out:Wicket_RPC_Tests.app
+alc /project:./test /packagecachepath:./test/.alpackages /out:Wicket_Tests.app
 ```
 
 Or press **F5** in VS Code to publish to your configured BC sandbox. The AL extension needs `app.json`

@@ -136,14 +136,14 @@ The planes are not just documentation: the shipped permission sets grant Execute
 
 ### From a compiled package
 
-Upload `Wicket_RPC.app` through **Extension Management → Upload Extension** (or the Admin Center / automation API) and install it. Install the companion `Wicket_Actions_Base.app` afterwards if you need posting actions; it depends on the core app by id. The test app (`Wicket Tests`) is for development pipelines only and must not be installed in production.
+Download `Wicket_<version>.app` (and, if you need posting actions, `Wicket_Actions_Base_<version>.app`) from the repository's [Releases](https://github.com/davesmith7403/wicket-bc/releases) page. Upload the core app in the Business Central admin center (**Manage Apps → Install Extension**) or through **Extension Management → Upload Extension**, and install it. Install the companion afterwards; it depends on the core app by id. The test app (`Wicket Tests`) is for development pipelines only and must not be installed in production.
 
 ### From source
 
 Each app lives in its own folder; never compile from the repository root, because the AL compiler globs `*.al` recursively and would swallow the sibling apps.
 
 ```bash
-alc /project:./app     /packagecachepath:./.alpackages /out:Wicket_RPC.app
+alc /project:./app     /packagecachepath:./.alpackages /out:Wicket.app
 alc /project:./actions /packagecachepath:./actions/.alpackages /out:Wicket_Actions_Base.app
 ```
 

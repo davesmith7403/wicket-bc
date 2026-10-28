@@ -647,10 +647,10 @@ codeunit &quot;Bcmag Op Runner&quot;           gates (Read-Only Mode, then the r
 </tbody></table></div>
 <h2 id="6-installing-the-extensions">6. Installing the extensions</h2>
 <h3 id="from-a-compiled-package">From a compiled package</h3>
-<p>Upload <code>Wicket_RPC.app</code> through <strong>Extension Management → Upload Extension</strong> (or the Admin Center / automation API) and install it. Install the companion <code>Wicket_Actions_Base.app</code> afterwards if you need posting actions; it depends on the core app by id. The test app (<code>Wicket Tests</code>) is for development pipelines only and must not be installed in production.</p>
+<p>Download <code>Wicket_&lt;version&gt;.app</code> (and, if you need posting actions, <code>Wicket_Actions_Base_&lt;version&gt;.app</code>) from the repository&#39;s <a href="https://github.com/davesmith7403/wicket-bc/releases">Releases</a> page. Upload the core app in the Business Central admin center (<strong>Manage Apps → Install Extension</strong>) or through <strong>Extension Management → Upload Extension</strong>, and install it. Install the companion afterwards; it depends on the core app by id. The test app (<code>Wicket Tests</code>) is for development pipelines only and must not be installed in production.</p>
 <h3 id="from-source">From source</h3>
 <p>Each app lives in its own folder; never compile from the repository root, because the AL compiler globs <code>*.al</code> recursively and would swallow the sibling apps.</p>
-<pre data-lang="bash"><code class="language-bash">alc /project:./app     /packagecachepath:./.alpackages /out:Wicket_RPC.app
+<pre data-lang="bash"><code class="language-bash">alc /project:./app     /packagecachepath:./.alpackages /out:Wicket.app
 alc /project:./actions /packagecachepath:./actions/.alpackages /out:Wicket_Actions_Base.app
 </code></pre>
 <p>In VS Code open the <code>app/</code> folder (not the repository root), copy <code>app/.vscode/launch.json.example</code> to <code>launch.json</code> with your tenant and sandbox name, and press F5. The repository also carries an AL-Go pipeline that builds all three apps and runs the test suite in a BC 26 container on every push.</p>
