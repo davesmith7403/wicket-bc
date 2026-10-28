@@ -64,7 +64,7 @@ A request meets these checks in this sequence. Each one can refuse independently
 | 2 | Idempotency key for `invoke` and `action` (Setup **Require Key For Actions**) | Wicket administrator | `400 idempotency-key-required` |
 | 3 | Read-Only Mode (tenant-wide switch) | Wicket administrator | `403 read-only` |
 | 4 | Wicket role on the principal (the role-gate tables of the permission-set ladder) | BC administrator | `403 role-forbidden`, naming the required permission set. A principal with no Wicket role at all gets HTTP 403 on the endpoint itself. |
-| 5 | Exposure allowlist and Mode | Wicket administrator | `403 not-exposed` |
+| 5 | Exposure list and Mode | Wicket administrator | `403 not-exposed` |
 | 6 | Field policy | Wicket administrator | `403 field-restricted` (hidden), `403 field-masked` (masked field used as a filter, sort or aggregate), `400 masked-value` (write-back of a mask) |
 | 7 | Procedure or Action Catalog enrolment | Wicket administrator | `404 unknown-procedure`, `403 invoke-disabled`, `404 unknown-action`, `403 action-disabled` |
 | 8 | Trigger-bypass policy for `init: false` / `validate: false` (Setup **Allow Trigger Bypass**) | Wicket administrator | `403 trigger-bypass-disabled` |
@@ -108,8 +108,8 @@ The planes are not just documentation: the shipped permission sets grant Execute
 
 ## 4. Security model in one page
 
-- **Exposure allowlist.** Table `Bcmag Exposure` holds one row per table or codeunit with `Allow Read / Insert / Modify / Delete / Invoke`. In the default `Allowlisted` mode a table without a row is invisible. `Open` mode (for sandboxes) allows any table the principal's BC permissions allow, but never `invoke` unless the separate `Allow Invoke In Open Mode` switch is set.
-- **Read-Only Mode.** One switch on the setup card refuses every mutating operation (`insert`, `modify`, `delete`, `invoke`, `action`) before any other check. The exceptions are an action preview and a verb enrolled as non-mutating: both run inside a forced rollback that undoes their writes in Business Central (chapter 12 lists the limits). They can still **read and return** data: like every action they bypass the exposure allowlist and the field policy, so on a read-only endpoint an enabled `document-pdf` serves any document's PDF and a posting preview returns amounts. Enable those verbs there only for principals who may see that, or mark them mutating to keep them off read-only.
+- **Exposure list.** Table `Bcmag Exposure` holds one row per table or codeunit with `Allow Read / Insert / Modify / Delete / Invoke`. In the default mode, **Exposed tables only** (API name `Allowlisted`), a table without a row is invisible. `Open` mode (for sandboxes) allows any table the principal's BC permissions allow, but never `invoke` unless the separate `Allow Invoke In Open Mode` switch is set.
+- **Read-Only Mode.** One switch on the setup card refuses every mutating operation (`insert`, `modify`, `delete`, `invoke`, `action`) before any other check. The exceptions are an action preview and a verb enrolled as non-mutating: both run inside a forced rollback that undoes their writes in Business Central (chapter 12 lists the limits). They can still **read and return** data: like every action they bypass the exposure list and the field policy, so on a read-only endpoint an enabled `document-pdf` serves any document's PDF and a posting preview returns amounts. Enable those verbs there only for principals who may see that, or mark them mutating to keep them off read-only.
 - **Field policy.** Business Central has no column-level security, so Wicket decides per field whether it may be read or written, on every surface that names a field. Each field resolves to Hidden, Masked or Clear. Three modes: `AllFields`, `ByClassification` (the fresh-install default: `CustomerContent` and `SystemMetadata` are Clear, `EUII` and `EUPI` are Masked, everything else is Hidden until an administrator decides) and `Explicit` (a field is Hidden unless it has a row). A caller holding `Wicket - Unmask`, or a per-user exception, can see Masked fields in clear.
 - **Catalog enrolment.** `invoke` runs only wrappers enrolled in the Procedure Catalog with `Allow Run`; `action` additionally needs an enabled Action Catalog row. There is no reflection over arbitrary AL methods.
 - **Permission-set ladder.** `Wicket - Read` → `Wicket - Execute` → `Wicket - Edit` for callers, `Wicket - Audit` and `Wicket - Admin` for humans, and two generic data sets, `Wicket Data - Read` and `Wicket Data - Exec`. Each rung is the only grant of Execute on its handler codeunits and of write rights on one empty role-gate table (`Bcmag Execute Gate` from Execute up, `Bcmag Write Gate` from Edit up); the dispatcher checks the gate before routing, so the plane is enforced per principal even against a codeunit wildcard held elsewhere, and a refusal is a typed `403 role-forbidden` with no side effects.
@@ -151,8 +151,8 @@ In VS Code open the `app/` folder (not the repository root), copy `app/.vscode/l
 
 ### What installation does
 
-- Creates the `Wicket Setup` singleton for every company, with fail-closed defaults: `Allowlisted` mode, field policy `ByClassification` (CustomerContent and SystemMetadata Clear, EUII and EUPI Masked with the `PARTIAL` profile, every other classification Hidden), the **Unmask Tier Enabled** switch on, async off, Read-Only Mode off, **Require Key For Actions** on, **Allow Trigger Bypass** off.
-- Leaves the exposure allowlist empty. Nothing is reachable until you add rows, switch to `Open` mode, or apply a preset on the setup card (chapter 9).
+- Creates the `Wicket Setup` singleton for every company, with fail-closed defaults: mode Exposed tables only, field policy `ByClassification` (CustomerContent and SystemMetadata Clear, EUII and EUPI Masked with the `PARTIAL` profile, every other classification Hidden), the **Unmask Tier Enabled** switch on, async off, Read-Only Mode off, **Require Key For Actions** on, **Allow Trigger Bypass** off.
+- Leaves the exposure list empty. Nothing is reachable until you add rows, switch to `Open` mode, or apply a preset on the setup card (chapter 9).
 - Arms the async maintenance task (the reaper) that fails stale workers, expires delivered packages and purges old queue rows. It re-arms itself every four hours, first thing in each run, so a fault later in the run cannot end the chain; its task failure codeunit (`Bcmag Async Reaper Guard`) re-arms it if even that did not stick, and every async submit re-arms it when no reaper task is live.
 - Subscribes to company creation so a company created later gets its own setup row.
 - The companion enrols its wrappers in the Procedure Catalog and its named actions in the Action Catalog, all with `Allow Run` off, and adds their exposure rows with `Allow Invoke` off. Re-installing or upgrading never overwrites an administrator's `Allow Run` / `Allow Invoke` choices on those rows; an upgrade does refresh the companion-owned fields of rows that already exist (**Description** and **Wrapper Codeunit Id** everywhere, plus **Category**, **Is Mutating**, **Preview Supported** and **Args Schema** on Action Catalog rows), so documentation, routing and metadata fixes reach tenants that enrolled earlier.
@@ -242,7 +242,7 @@ Wicket ships its permission sets as composable AL objects. Assign exactly **one 
 
 ### What to know before assigning the wildcard sets
 
-- `Wicket Data - Read` uses `tabledata * = R`. The wildcard spans every extension and every system table in the tenant; that is what "read any information" means. Inside Wicket the exposure allowlist and the field policy still apply, so the wildcard only supplies the Business Central side of the check.
+- `Wicket Data - Read` uses `tabledata * = R`. The wildcard spans every extension and every system table in the tenant; that is what "read any information" means. Inside Wicket the exposure list and the field policy still apply, so the wildcard only supplies the Business Central side of the check.
 - `Wicket Data - Exec` grants Execute on every codeunit, Wicket's own write handlers included: a permission set cannot carve an exception out of a wildcard. The generic write plane nevertheless stays closed to it because the dispatcher routes `insert`/`modify`/`delete` only for principals that can write the `Bcmag Write Gate` table, which only `Wicket - Edit` grants. Separately, an object that carries its own `Permissions` property can write while it runs, which is how posting routines create ledger entries for users who hold no ledger permission. The set therefore means "cannot write directly", not "cannot cause a write". For production prefer `Wicket Data - Read` + `Wicket - Execute` + the provider's own wrapper set, which names exactly the codeunits in scope.
 - Permission sets are additive. No Wicket set restricts what a principal holds elsewhere; the role gates restrict only what Wicket itself will route.
 - A principal whose role is below an operation is refused before the handler runs with a `403 role-forbidden` problem whose detail names the permission set required. Do not retry; assign that rung.
@@ -254,12 +254,12 @@ Search **Wicket Setup**. The card holds one row per company. Fields are grouped 
 
 ### Presets
 
-The quickest way from install to a working endpoint is one of the four **Presets** on the card's action bar. Each asks for confirmation, sets only the switches listed below, and then names the permission sets to assign to the caller (chapter 7, Business Central side). A preset never assigns permissions itself: granting access stays in the standard **Users** and **Microsoft Entra Applications** pages. The **Current Preset** field at the top of the card shows which preset the settings match, or `Custom` (a fresh install is `Custom`: Allowlisted and writable).
+The quickest way from install to a working endpoint is one of the four **Presets** on the card's action bar. Each asks for confirmation, sets only the switches listed below, and then names the permission sets to assign to the caller (chapter 7, Business Central side). A preset never assigns permissions itself: granting access stays in the standard **Users** and **Microsoft Entra Applications** pages. The **Current Preset** field at the top of the card shows which preset the settings match, or `Custom` (a fresh install is `Custom`: Exposed tables only, and writable).
 
 | Preset | Mode | Read-Only Mode | Allow Invoke In Open Mode | Field Policy Mode | Assign the caller |
 |---|---|---|---|---|---|
 | **Simple Read-Only** | Open | on | off | unchanged | `Wicket Data - Read` |
-| **Read-Only (Selected Tables)** | Allowlisted | on | off | unchanged | `Wicket - Read` plus a set with Read on the allowed tables. The Exposure list opens next so you can allow tables. |
+| **Read-Only (Selected Tables)** | Exposed tables only | on | off | unchanged | `Wicket - Read` plus a set with Read on the allowed tables. The Exposure list opens next so you can allow tables. |
 | **Read + Business Actions** | Open | off | off | unchanged | `Wicket Data - Read`, `Wicket - Execute`, `Wicket Act` |
 | **Developer Sandbox** | Open | off | on | AllFields | `Wicket - Admin`. Refused in a production environment. |
 
@@ -270,7 +270,7 @@ Every preset except Developer Sandbox leaves the field policy and masking as the
 | Field | Default | Meaning |
 |---|---|---|
 | Read-Only Mode | off | Refuses `insert`, `modify`, `delete`, `invoke` and mutating `action` calls for every caller, before any other check. Action previews and verbs enrolled non-mutating still run, inside a forced rollback (chapter 12); they can return data, so mark such a verb mutating to keep it off a read-only endpoint. Turn it on for a tenant that must never be written to through Wicket. |
-| Mode | Allowlisted | `Allowlisted` honours the exposure table. `Open` allows read and write on any table the principal's BC permissions allow; use it in sandboxes only. |
+| Mode | Exposed tables only | **Exposed tables only** (API name `Allowlisted`) honours the exposure table. `Open` allows read and write on any table the principal's BC permissions allow; use it in sandboxes only. |
 | Allow Invoke In Open Mode | off | Even in `Open` mode `invoke` stays deny-by-default unless this is on. |
 | Default Languages | `en-US` | Comma-separated culture tags used for `captionML` when a request passes no `languages`. |
 | Skill Doc Url | blank | Public HTTPS URL of the usage guide served by the `skill` operation. Blank disables the operation. HTTP is refused. |
@@ -331,7 +331,7 @@ Two actions on the card, **Set Azure Credential** and **Set Azure Read SAS**, op
 
 ### Recommended production posture
 
-Read-Only Mode on unless writes are a requirement; API Routing `Off` unless the use case wants API-first reads and accepts that those reads are audited only by the client; `Allowlisted` mode; field policy `ByClassification` with only the classifications the use case needs Clear, and `Wicket - Unmask` assigned only where a human or agent must see masked values; Require ETag On Writes on for any writing agent; Strong ETag on when several agents write the same tables; Require Key For Actions on and Allow Trigger Bypass off (the fresh-install values; set them on an upgraded tenant once its callers send keys and run triggers); retention set to your audit requirement; async enabled only with `Service SAS` and a dedicated container.
+Read-Only Mode on unless writes are a requirement; API Routing `Off` unless the use case wants API-first reads and accepts that those reads are audited only by the client; mode Exposed tables only; field policy `ByClassification` with only the classifications the use case needs Clear, and `Wicket - Unmask` assigned only where a human or agent must see masked values; Require ETag On Writes on for any writing agent; Strong ETag on when several agents write the same tables; Require Key For Actions on and Allow Trigger Bypass off (the fresh-install values; set them on an upgraded tenant once its callers send keys and run triggers); retention set to your audit requirement; async enabled only with `Service SAS` and a dedicated container.
 
 ## 10. Exposing tables and codeunits
 
@@ -352,7 +352,7 @@ Rules the table enforces regardless of what you enter:
 - A row grants nothing the principal's Business Central permissions do not also grant. `describe` reports the effective `permissions` per table.
 - `discover` lists only tables that are exposed and readable by the caller, so an agent sees exactly the surface you opened.
 
-A typical read-only reporting allowlist:
+A typical exposure list for read-only reporting:
 
 | Object Type | Object Id | Allow Read | Description |
 |---|---|---|---|
@@ -531,7 +531,7 @@ Search **Wicket Action Catalog**. An action is a stable verb over a wrapper.
 
 `capabilities.actions` lists **every** row, enabled or not, with `enabled` = Allow Run, so an agent can tell "no companion" (empty) from "enrolled but disabled" and name the administrator step.
 
-Enabling an action grants whatever its wrapper does, independent of the exposure allowlist and the field policy. Review a wrapper like a permission set before enabling it.
+Enabling an action grants whatever its wrapper does, independent of the exposure list and the field policy. Review a wrapper like a permission set before enabling it.
 
 ### The companion's actions
 
@@ -714,7 +714,7 @@ Things to keep in mind when writing a provider:
 - **Validate in the wrapper.** Wicket publishes the Args Schema to agents but does not check calls against it; the wrapper is the only thing between a malformed argument and the database.
 - **Preview Supported** only for a wrapper that honours `args.preview` (see the Action Catalog table above). Leave it off otherwise.
 - **Companies created later.** `OnInstallAppPerCompany` runs for the companies that exist at install time. To enrol in companies created afterwards, subscribe to the `Company` table's `OnAfterInsertEvent` and enrol there, as the companion does.
-- **Review like a permission set.** The catalog row is the gate: once Allow Run is on, the wrapper bypasses the exposure allowlist and the field policy, and can touch any table its code reaches.
+- **Review like a permission set.** The catalog row is the gate: once Allow Run is on, the wrapper bypasses the exposure list and the field policy, and can touch any table its code reaches.
 
 ## 13. Async delivery setup
 
@@ -906,7 +906,7 @@ A key names **one logical request**. Send a fresh unique key per request and reu
 
 `kind: "apis"` lists the tenant's own API pages and API queries: `{ id, scope: "api", apiKind: "page"|"query", name, entitySetName, entityName, route, routes, sourceTableId?, operations }`. `route` is what goes between `/api/` and `/companies(...)`, plus the entity set: `v2.0/customers` for Microsoft's standard APIs, `<publisher>/<group>/<version>/<entitySet>` for anything else; `routes` lists every declared version, and `route` uses the highest. The answer also carries `catalogVersion`, `apiRouting`, `@count` and, while more rows exist, `@nextSkip`. Extra members: `tableId` (only the API pages over one table), `skip`, and `ifNoneMatch`.
 
-**Caching the catalog.** `catalogVersion` fingerprints the catalog's content — the API pages and queries themselves, plus every installed app's package when the caller may read that — so it moves when an app is installed, upgraded or removed, and not when Wicket's policy changes. Cache the catalog under it and revalidate by sending the cached value as `ifNoneMatch`: an unchanged catalog answers `notModified: true` with no rows. `capabilities.apiRouting.catalogVersion` carries the same value. The MCP server's `wicket_apis` does this for you, in memory and on disk. The catalog is not filtered by the exposure allowlist, because which APIs exist is already public in the tenant's `$metadata`; Wicket's own endpoint is never listed.
+**Caching the catalog.** `catalogVersion` fingerprints the catalog's content — the API pages and queries themselves, plus every installed app's package when the caller may read that — so it moves when an app is installed, upgraded or removed, and not when Wicket's policy changes. Cache the catalog under it and revalidate by sending the cached value as `ifNoneMatch`: an unchanged catalog answers `notModified: true` with no rows. `capabilities.apiRouting.catalogVersion` carries the same value. The MCP server's `wicket_apis` does this for you, in memory and on disk. The catalog is not filtered by the exposure list, because which APIs exist is already public in the tenant's `$metadata`; Wicket's own endpoint is never listed.
 
 ### describe
 
@@ -939,7 +939,7 @@ For a codeunit: `{ codeunitId, name, schemaVersion, procedures: [ { procedure, r
 { "data": { "kind": "api", "pageId": 30009 } }
 ```
 
-For an API page (`pageId`, or `queryId` for an API query): the catalog row plus `sourceTableView`, `fields: [ { name, mapped, fieldNo?, tableId?, readable } ]`, `routable`, `notRoutableReason?` and `catalogVersion`. Each API field names the table field it is bound to; one with `mapped: false` is computed by the API's own code and is never `readable`, because the field policy cannot judge it. `routable` is true only when API Routing is `Prefer` and Wicket would let the caller read the source table (exposure allowlist, BC permissions); otherwise `notRoutableReason` says `routing-off`, `not-exposed` or, for an API query, `no-field-mapping`. The answer does not refuse a table the caller may not read (the API's shape is public); it answers `routable: false`. These governance answers follow the policy as it is now, so a client asks again before every API read. `sourceTableView` matters when choosing: an API may cover only part of its table (sales orders but not quotes, say). An id that is not an API page is `404 unknown-api`.
+For an API page (`pageId`, or `queryId` for an API query): the catalog row plus `sourceTableView`, `fields: [ { name, mapped, fieldNo?, tableId?, readable } ]`, `routable`, `notRoutableReason?` and `catalogVersion`. Each API field names the table field it is bound to; one with `mapped: false` is computed by the API's own code and is never `readable`, because the field policy cannot judge it. `routable` is true only when API Routing is `Prefer` and Wicket would let the caller read the source table (exposure list, BC permissions); otherwise `notRoutableReason` says `routing-off`, `not-exposed` or, for an API query, `no-field-mapping`. The answer does not refuse a table the caller may not read (the API's shape is public); it answers `routable: false`. These governance answers follow the policy as it is now, so a client asks again before every API read. `sourceTableView` matters when choosing: an API may cover only part of its table (sales orders but not quotes, say). An id that is not an API page is `404 unknown-api`.
 
 ### Reading through an API (MCP)
 
@@ -1222,7 +1222,7 @@ All three are strictly caller-scoped: another principal's request id is indistin
 
 ### capabilities
 
-`{ "data": {} }` returns `{ product, apiVersion, schemaVersion, urlTemplate, transport, envelope, operations, filterGrammar, limits, readOnly, structureVersion, strongEtag, exposureMode, fieldPolicy, skill, async, actions, paging }` (and `apiRouting`). `structureVersion` is a SHA-256 over the installed apps' packages: it moves when an app is installed, upgraded or removed, which is when table structure can have changed, and not when Wicket's policy changes. A client's structural knowledge of the tenant (a schema cache, the MCP server's tenant map) should be re-verified when it moves. `exposureMode` is the invariant name (`Allowlisted` or `Open`); `fieldPolicy` is `{ mode, classifications: [{ name, access, maskProfile }], maskProfiles, unmaskTierEnabled, principal: { unmaskGranted, activeExceptions }, describeRestrictedFields }`, so an agent learns what it will see masked and whether its own grants lift it; `paging` describes the keyset and offset modes. Call it once at startup and configure your client from it rather than hard-coding limits.
+`{ "data": {} }` returns `{ product, apiVersion, schemaVersion, urlTemplate, transport, envelope, operations, filterGrammar, limits, readOnly, structureVersion, strongEtag, exposureMode, fieldPolicy, skill, async, actions, paging }` (and `apiRouting`). `structureVersion` is a SHA-256 over the installed apps' packages: it moves when an app is installed, upgraded or removed, which is when table structure can have changed, and not when Wicket's policy changes. A client's structural knowledge of the tenant (a schema cache, the MCP server's tenant map) should be re-verified when it moves. `exposureMode` is the invariant name (`Allowlisted` for Exposed tables only, or `Open`); `fieldPolicy` is `{ mode, classifications: [{ name, access, maskProfile }], maskProfiles, unmaskTierEnabled, principal: { unmaskGranted, activeExceptions }, describeRestrictedFields }`, so an agent learns what it will see masked and whether its own grants lift it; `paging` describes the keyset and offset modes. Call it once at startup and configure your client from it rather than hard-coding limits.
 
 ### skill
 
@@ -1340,7 +1340,7 @@ A service principal that reads customers, items and open sales orders for a repo
 
 **Permission sets on the Entra Applications entry:** `Wicket - Read` and a customer set granting Read on tables 18, 27, 36 and 37 (or `Wicket Data - Read` if reading anything is acceptable).
 
-**Setup:** Read-Only Mode on; Mode `Allowlisted`; Field Policy Mode `ByClassification` with the fresh-install rules: Customer Content and System Metadata Clear, EUII and EUPI Masked, the rest Hidden. Fields classified EUII or EUPI reach the agent with the `PARTIAL` rendering (a fixed `****` plus the last two characters). To show e-mail as `j****@example.com`, add a **Wicket Field Exposure** row for that field with Read Access Masked and Mask Profile `EMAIL`. No principal needs `Wicket - Unmask`.
+**Setup:** Read-Only Mode on; Mode Exposed tables only; Field Policy Mode `ByClassification` with the fresh-install rules: Customer Content and System Metadata Clear, EUII and EUPI Masked, the rest Hidden. Fields classified EUII or EUPI reach the agent with the `PARTIAL` rendering (a fixed `****` plus the last two characters). To show e-mail as `j****@example.com`, add a **Wicket Field Exposure** row for that field with Read Access Masked and Mask Profile `EMAIL`. No principal needs `Wicket - Unmask`.
 
 **Exposure:** rows for tables 18, 27, 36, 37 with `Allow Read` on and every other flag off.
 
@@ -1479,7 +1479,7 @@ A tenant where Wicket exists for read-only analysis by an internal agent, with a
 
 **Permission sets:** the agent's principal holds `Wicket - Read` plus a narrow customer set; the auditor holds `Wicket - Audit`; the operator holds `Wicket - Admin`; log retention runs automatically.
 
-**Setup:** Read-Only Mode on; Mode `Allowlisted`; Field Policy Mode `Explicit`; Describe Restricted Fields off; Async Enabled off; Skill Doc Url set to the hosted guide; Operation Log Retention Days 365.
+**Setup:** Read-Only Mode on; Mode Exposed tables only; Field Policy Mode `Explicit`; Describe Restricted Fields off; Async Enabled off; Skill Doc Url set to the hosted guide; Operation Log Retention Days 365.
 
 **Field Exposure:** rows with Read Access Clear for exactly the fields the analysis needs, for example table 18 fields 1 (No.), 2 (Name), 35 (Country/Region Code) and 58 (Balance (LCY)).
 
@@ -1573,7 +1573,7 @@ AL object names keep the `Bcmag` prefix from the product's former name: renaming
 |---|---|---|---|
 | Page (API) | 94100 | Bcmag Rpc Endpoint | The single HTTP surface, `api/wicket/rpc/v1.0`, entity `wicketEndpoint` |
 | Table | 94100 | Bcmag Setup | Per-company configuration singleton |
-| Table | 94101 | Bcmag Exposure | Allowlist per table or codeunit |
+| Table | 94101 | Bcmag Exposure | The exposure list: one row per table or codeunit |
 | Table | 94102 | Bcmag Operation Log | One row per request |
 | Table | 94103 | Bcmag Idempotency Log | Replay snapshots |
 | Table | 94104 | Bcmag Procedure Catalog | Invoke enrolment |
@@ -1665,7 +1665,7 @@ Confirm fields with `describe` before writing; for vertical solutions use `disco
 |---|---|
 | Bound action | An OData operation attached to an entity, invoked as `POST …/entity(key)/Microsoft.NAV.name`. Wicket's operations are bound actions on the `wicketEndpoint` singleton. |
 | Envelope | The JSON body every call carries: `id`, `issuedAt`, `origin`, optional `idempotencyKey`, `data`. |
-| Exposure | The allowlist row that makes a table or codeunit reachable. |
+| Exposure | The row that makes a table or codeunit reachable. |
 | Field policy | The per-field read/write decision Wicket adds on top of Business Central: Hidden, Masked or Clear for reading. |
 | Masked | A field verdict: the value is returned as a mask rendering and cannot be filtered, sorted, aggregated or written back. |
 | Unmask tier | The `Wicket - Unmask` permission set, which lifts Masked to Clear for its holder. |

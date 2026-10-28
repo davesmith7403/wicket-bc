@@ -247,12 +247,12 @@ wrappers enforce Gen. Jnl.-Post's refusals (Force Posting Report, Job G/L WIP so
 ## Security model
 
 - **Deny-by-default exposure.** `table "Bcmag Exposure"` gates each object: `Allow Read/Insert/Modify/
-  Delete/Invoke`. `Bcmag Setup.Mode = Allowlisted` (default) honours the table; `Open` (sandbox) bypasses
+  Delete/Invoke`. `Bcmag Setup.Mode` = **Exposed tables only** (default; API name `Allowlisted`) honours the table; `Open` (sandbox) bypasses
   the per-row check for reads/writes — but **never for invoke** unless `Allow Invoke In Open Mode` is set.
 - **API Routing (off by default).** `Bcmag Setup."API Routing"` (`Off` / `Prefer`) decides whether a
   client may read through one of the tenant's own API pages instead of the dynamic plane. The catalog
   itself (`discover kind:"apis"`, `describe kind:"api"`) is always visible; `describe kind:"api"`
-  answers `routable` and per-field `readable` under the CURRENT exposure allowlist, BC permissions and
+  answers `routable` and per-field `readable` under the CURRENT exposure list, BC permissions and
   field policy, and the MCP server asks it fresh before every API read. Such a read never passes the
   endpoint, so it is not in the Operation Log (the MCP server logs one stderr line per read).
 - **Read-Only Mode master switch.** `Bcmag Setup."Read-Only Mode"` refuses every mutating operation

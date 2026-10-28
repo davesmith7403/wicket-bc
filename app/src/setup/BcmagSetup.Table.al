@@ -221,7 +221,7 @@ table 94100 "Bcmag Setup"
     var
         DeveloperSandboxOnProductionErr: Label 'The Developer Sandbox preset opens every table and codeunit and shows every field, so it can only be applied in a sandbox environment.';
         NotAPresetErr: Label '%1 is not a preset that can be applied.', Comment = '%1 = preset caption';
-        SimpleReadOnlySummaryTxt: Label 'Every table becomes readable without allowlist rows, and every write, invoke and action is refused. The field policy and masking stay as they are.';
+        SimpleReadOnlySummaryTxt: Label 'Every table becomes readable without exposure rows, and every write, invoke and action is refused. The field policy and masking stay as they are.';
         ReadOnlySelectedSummaryTxt: Label 'Only the tables you allow on the Exposure list are readable, and every write, invoke and action is refused. The field policy and masking stay as they are.';
         ReadAndActionsSummaryTxt: Label 'Every table becomes readable, enrolled business actions can run, and invoke stays off. Direct insert, modify and delete stay refused unless the caller holds Wicket - Edit. The field policy and masking stay as they are.';
         DeveloperSandboxSummaryTxt: Label 'Every table is readable and writable for callers with the matching permission sets, invoke is allowed on every codeunit, and the field policy shows every field. Sandbox environments only.';

@@ -87,7 +87,7 @@ page 94101 "Bcmag Setup Card"
             {
                 Caption = 'API Routing';
 
-                field(ApiRoutingMode;          Rec."API Routing")         { ApplicationArea = All; ToolTip = 'Prefer lets a client read through the tenant''s own API pages when one covers the data, falling back to Wicket''s dynamic plane otherwise. The client asks Wicket first, so the exposure allowlist and field policy still decide which tables and fields it may read, but the API read itself is not recorded in the Wicket Operation Log. Off: clients use the dynamic plane only.'; }
+                field(ApiRoutingMode;          Rec."API Routing")         { ApplicationArea = All; ToolTip = 'Prefer lets a client read through the tenant''s own API pages when one covers the data, falling back to Wicket''s dynamic plane otherwise. The client asks Wicket first, so the exposure list and field policy still decide which tables and fields it may read, but the API read itself is not recorded in the Wicket Operation Log. Off: clients use the dynamic plane only.'; }
             }
             group(AsyncDelivery)
             {

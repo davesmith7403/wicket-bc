@@ -20,7 +20,7 @@ page 94108 "Bcmag Action Catalog List"
             group(SecurityNotice)
             {
                 ShowCaption = false;
-                InstructionalText = 'Enabling an action grants whatever its wrapper codeunit does, independent of the table exposure allowlist and field policy. Review a wrapper like a permission set before enabling it.';
+                InstructionalText = 'Enabling an action grants whatever its wrapper codeunit does, independent of which tables are exposed and of the field policy. Review a wrapper like a permission set before enabling it.';
             }
             repeater(ActionRows)
             {
@@ -36,7 +36,7 @@ page 94108 "Bcmag Action Catalog List"
                 field(WrapperCodeunitId; Rec."Wrapper Codeunit Id")
                 {
                     ApplicationArea = All;
-                    ToolTip = 'Specifies the codeunit that implements the action. It runs under the calling principal''s permissions, but is not constrained by the table exposure allowlist or the field policy — it can touch any table the caller''s permission sets allow.';
+                    ToolTip = 'Specifies the codeunit that implements the action. It runs under the calling principal''s permissions, but is not constrained by the exposure list or the field policy — it can touch any table the caller''s permission sets allow.';
                 }
                 field(Description; Rec.Description) { ApplicationArea = All; }
             }
