@@ -7,6 +7,9 @@ single, generic RPC protocol over BC data and logic — one API page, sixteen op
 table reachable by ID — designed so an LLM agent can discover, read, write, invoke, run named
 business actions, and export asynchronously against BC safely and without bespoke per-entity endpoints.
 
+> **New here?** The [quick start](https://davesmith7403.github.io/wicket-bc/quick-start.html) connects Claude to a customer's Business Central in six steps, from
+> Windows or a Mac: three in Business Central, three in Claude Code.
+
 It is deny-by-default, returns RFC 7807 problem documents, enforces optimistic concurrency, logs
 every call, and emits Application Insights telemetry.
 

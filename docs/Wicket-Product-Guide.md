@@ -134,6 +134,8 @@ The planes are not just documentation: the shipped permission sets grant Execute
 
 ## 6. Installing the extensions
 
+**The short path:** the [quick start](quick-start.html) puts this chapter, chapter 9's Simple Read-Only preset and the MCP install (chapter 34) on one page, for a first read-only connection to a sandbox.
+
 ### From a compiled package
 
 Download `Wicket_<version>.zip` (and, if you need posting actions, `Wicket_Actions_Base_<version>.zip`) from the repository's [Releases](https://github.com/davesmith7403/wicket-bc/releases) page and unzip them; GitHub does not accept `.app` attachments, so each package ships zipped, with `SHA256SUMS.txt` to check them. Upload the core app in the Business Central admin center (**Manage Apps → Install Extension**) or through **Extension Management → Upload Extension**, and install it. Install the companion afterwards; it depends on the core app by id. The test app (`Wicket Tests`) is for development pipelines only and must not be installed in production.
@@ -1490,6 +1492,8 @@ A tenant where Wicket exists for read-only analysis by an internal agent, with a
 # Part VI — The MCP server
 
 ## 34. Install and configure
+
+**The short path:** the [quick start](quick-start.html) covers the plugin install and `/wicket:setup` together with the Business Central side, on one page.
 
 The MCP server, the plugin and the usage skill live in their own repository, [davesmith7403/wicket](https://github.com/davesmith7403/wicket). In Claude Code, install the plugin:
 

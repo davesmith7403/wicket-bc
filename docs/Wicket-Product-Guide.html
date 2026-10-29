@@ -646,6 +646,7 @@ codeunit &quot;Bcmag Op Runner&quot;           gates (Read-Only Mode, then the r
 </tr>
 </tbody></table></div>
 <h2 id="6-installing-the-extensions">6. Installing the extensions</h2>
+<p><strong>The short path:</strong> the <a href="quick-start.html">quick start</a> puts this chapter, chapter 9&#39;s Simple Read-Only preset and the MCP install (chapter 34) on one page, for a first read-only connection to a sandbox.</p>
 <h3 id="from-a-compiled-package">From a compiled package</h3>
 <p>Download <code>Wicket_&lt;version&gt;.zip</code> (and, if you need posting actions, <code>Wicket_Actions_Base_&lt;version&gt;.zip</code>) from the repository&#39;s <a href="https://github.com/davesmith7403/wicket-bc/releases">Releases</a> page and unzip them; GitHub does not accept <code>.app</code> attachments, so each package ships zipped, with <code>SHA256SUMS.txt</code> to check them. Upload the core app in the Business Central admin center (<strong>Manage Apps → Install Extension</strong>) or through <strong>Extension Management → Upload Extension</strong>, and install it. Install the companion afterwards; it depends on the core app by id. The test app (<code>Wicket Tests</code>) is for development pipelines only and must not be installed in production.</p>
 <h3 id="from-source">From source</h3>
@@ -2767,6 +2768,7 @@ Content-Type: application/json
 <hr class="part-break">
 <h1 class="part" id="part-vi--the-mcp-server">Part VI — The MCP server</h1>
 <h2 id="34-install-and-configure">34. Install and configure</h2>
+<p><strong>The short path:</strong> the <a href="quick-start.html">quick start</a> covers the plugin install and <code>/wicket:setup</code> together with the Business Central side, on one page.</p>
 <p>The MCP server, the plugin and the usage skill live in their own repository, <a href="https://github.com/davesmith7403/wicket">davesmith7403/wicket</a>. In Claude Code, install the plugin:</p>
 <pre data-lang="text"><code class="language-text">/plugin marketplace add davesmith7403/wicket
 /plugin install wicket@wicket
