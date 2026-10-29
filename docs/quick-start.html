@@ -87,6 +87,18 @@ dd { margin: 2px 0 0; color: var(--ink-soft); }
 .panel ul { margin: 0; padding-left: 20px; }
 .panel li { margin-bottom: 8px; color: var(--ink-soft); }
 .callout { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--amber-tint); color: var(--ink); font-size: 0.93rem; }
+.asks { margin-top: 28px; background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 24px; box-shadow: var(--shadow); }
+.asks h2 { font: 600 1.3rem var(--font-display); margin: 0 0 4px; }
+.asks h3 { font: 600 1.05rem var(--font-display); margin: 22px 0 4px; }
+.asks .lead { margin: 0 0 14px; color: var(--ink-soft); font-size: 0.97rem; }
+.ask-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 980px) { .ask-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .ask-grid { grid-template-columns: minmax(0, 1fr); } }
+.ask { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--rule); }
+.ask .kind { font: 600 0.8rem var(--font-display); text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent-ink); }
+.ask.beyond .kind { color: var(--amber); }
+.ask p { margin: 0; flex: 1; }
+.ask button { align-self: flex-start; }
 footer { margin-top: 36px; color: var(--muted); font-size: 0.9rem; }
 </style>
 </head>
@@ -150,11 +162,30 @@ footer { margin-top: 36px; color: var(--muted); font-size: 0.9rem; }
       <li>
         <h3>Ask</h3>
         <div class="cmd"><code>/wicket:orient</code><button type="button" data-copy="/wicket:orient">Copy</button></div>
-        <p>Then ask in plain words, for example <em>"Which customers have open sales orders this month?"</em> or <em>"What does item 1000 have in stock, by location?"</em></p>
+        <p>Then ask in plain words. <a href="#ask">What to ask</a> below has examples to start from.</p>
       </li>
     </ol>
   </section>
 </div>
+
+<section class="asks" aria-labelledby="ask">
+  <h2 id="ask">What to ask</h2>
+  <p class="lead">Ask for the result you want, and Claude picks the form: an answer, a list, a file, a dashboard, a report or a link. Tried on Business Central's standard demo data.</p>
+  <div class="ask-grid">
+    <div class="ask"><span class="kind">A quick answer</span><p>How many sales orders are open, and what are they worth in total?</p><button type="button" data-copy="How many sales orders are open, and what are they worth in total?">Copy</button></div>
+    <div class="ask"><span class="kind">A list</span><p>List the customers with overdue invoices: amount overdue, days late and salesperson.</p><button type="button" data-copy="List the customers with overdue invoices: amount overdue, days late and salesperson.">Copy</button></div>
+    <div class="ask"><span class="kind">An Excel file</span><p>Export all items with their unit cost, vendor and stock per location to an Excel file.</p><button type="button" data-copy="Export all items with their unit cost, vendor and stock per location to an Excel file.">Copy</button></div>
+    <div class="ask"><span class="kind">A dashboard</span><p>Build a dashboard of the last 12 months' sales: revenue by month, top customers and top items.</p><button type="button" data-copy="Build a dashboard of the last 12 months' sales: revenue by month, top customers and top items.">Copy</button></div>
+    <div class="ask"><span class="kind">A written report</span><p>Write a one-page receivables summary for the finance meeting: what's overdue, who owes most, and what was paid this month.</p><button type="button" data-copy="Write a one-page receivables summary for the finance meeting: what's overdue, who owes most, and what was paid this month.">Copy</button></div>
+    <div class="ask"><span class="kind">A link to the record</span><p>Open the customer card of the customer with the largest overdue amount.</p><button type="button" data-copy="Open the customer card of the customer with the largest overdue amount.">Copy</button></div>
+  </div>
+  <h3>Beyond the APIs</h3>
+  <p class="lead">Wicket reads any table Business Central has, including ledgers that no API page or query exposes. These two come from such tables (the value entries, and the detailed customer ledger), as do the overdue list and the receivables report above.</p>
+  <div class="ask-grid">
+    <div class="ask beyond"><span class="kind">Gross margin per item</span><p>Show the gross margin per item for the last 12 months: sales, cost of goods sold and margin %.</p><button type="button" data-copy="Show the gross margin per item for the last 12 months: sales, cost of goods sold and margin %.">Copy</button></div>
+    <div class="ask beyond"><span class="kind">How customers pay</span><p>How many days late, on average, does each customer pay their invoices? Rank them, worst first.</p><button type="button" data-copy="How many days late, on average, does each customer pay their invoices? Rank them, worst first.">Copy</button></div>
+  </div>
+</section>
 
 <section class="more">
   <div class="panel" aria-labelledby="wrong">
