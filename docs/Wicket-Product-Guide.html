@@ -386,7 +386,7 @@ td:first-child { color: var(--ink); }
 <ul>
 <li><strong>Wicket</strong>, the core Business Central extension. One API page, sixteen bound actions, the deny-by-default security model, the audit log, telemetry, async export to Azure Blob Storage. It depends on Microsoft&#39;s System Application only, so it installs on any Business Central 26 SaaS environment without touching the Base Application.</li>
 <li><strong>Wicket Actions - Base</strong>, an optional companion extension. It supplies the strongly typed business actions a System-Application-only core cannot own: posting sales and purchase documents, posting general and item journal batches. It runs entirely through Wicket&#39;s invoke plane and installs with every action switched off.</li>
-<li><strong>wicket-mcp</strong>, a Model Context Protocol server (TypeScript on Bun). It fronts Wicket over stdio so Claude Desktop, Claude Code and any other MCP host see the operations as native tools, handles OAuth for one or many environments, and ships the protocol guide as a tool of its own. Agents without MCP can call the endpoint directly with any HTTP client.</li>
+<li><strong>wicket-mcp</strong>, a Model Context Protocol server (TypeScript, shipped as a self-contained program for Windows and Apple-silicon Macs). It fronts Wicket over stdio so Claude Desktop, Claude Code and any other MCP host see the operations as native tools, handles OAuth for one or many environments, and ships the protocol guide as a tool of its own. Agents without MCP can call the endpoint directly with any HTTP client.</li>
 </ul>
 <h3 id="design-principles">Design principles</h3>
 <ul>
@@ -638,7 +638,7 @@ codeunit &quot;Bcmag Op Runner&quot;           gates (Read-Only Mode, then the r
 </tr>
 <tr>
 <td>For the MCP server</td>
-<td>Bun 1.0 or later on the machine that runs the agent host.</td>
+<td>Nothing with the Claude Code plugin, on Windows (x64 or arm64) or an Apple-silicon Mac: the plugin downloads its server on the first start. Running from source, or for other MCP hosts: Bun 1.0 or later.</td>
 </tr>
 <tr>
 <td>For building from source</td>
@@ -2771,7 +2771,7 @@ Content-Type: application/json
 <pre data-lang="text"><code class="language-text">/plugin marketplace add davesmith7403/wicket
 /plugin install wicket@wicket
 </code></pre>
-<p>Then run <strong><code>/wicket:setup</code></strong>. It asks how you sign in: in a browser window (recommended), with a device code, or as an app with a client secret. It works out the tenant from a pasted Business Central address or a work email, lists the environments and companies to pick from, then saves and tests the connection. No GUID is typed by hand, and no restart is needed. Without a client ID of your own, Wicket uses its default client, so no app registration is needed. A client secret never passes through the chat: setup gives you a Keychain command to run yourself. The same command shows what is configured (<code>/wicket:setup view</code>), fixes a failing connection, changes the default and removes connections. The server starts even when nothing is configured, and every tool then answers <code>503 connection-unavailable</code> pointing to <code>/wicket:setup</code>.</p>
+<p>Then run <strong><code>/wicket:setup</code></strong>. It asks how you sign in: in a browser window (recommended), with a device code, or as an app with a client secret. It works out the tenant from a pasted Business Central address or a work email, lists the environments and companies to pick from, then saves and tests the connection. No GUID is typed by hand, and no restart is needed. Without a client ID of your own, Wicket uses its default client, so no app registration is needed. A client secret never passes through the chat: setup opens a one-time page in your browser, and the secret goes from there into your computer&#39;s own secret store (the Keychain on a Mac, protected for your Windows account on Windows). The same command shows what is configured (<code>/wicket:setup view</code>), fixes a failing connection, changes the default and removes connections. The server starts even when nothing is configured, and every tool then answers <code>503 connection-unavailable</code> pointing to <code>/wicket:setup</code>.</p>
 <p>To run the server standalone, or to configure connections by hand, clone that repository:</p>
 <pre data-lang="bash"><code class="language-bash">cd mcp
 bun install
@@ -2805,7 +2805,7 @@ cp .env.example .env
 <tr>
 <td><code>BC_CLIENT_SECRET</code></td>
 <td>yes</td>
-<td>Service-principal secret (prefer <code>connections.json</code> with Keychain or <code>secretEnv</code>)</td>
+<td>Service-principal secret (prefer <code>connections.json</code> with the system&#39;s secret store or <code>secretEnv</code>)</td>
 </tr>
 <tr>
 <td><code>BC_BASE_URL</code></td>
@@ -2834,7 +2834,7 @@ cp .env.example .env
 <p>Or in Claude Desktop&#39;s <code>claude_desktop_config.json</code>:</p>
 <pre data-lang="json"><code class="language-json">{ &quot;mcpServers&quot;: { &quot;wicket&quot;: { &quot;command&quot;: &quot;bun&quot;, &quot;args&quot;: [&quot;run&quot;, &quot;/absolute/path/to/wicket/mcp/src/index.ts&quot;] } } }
 </code></pre>
-<p>Secrets resolve per connection in this order: macOS Keychain (<code>keychainService</code> + <code>keychainAccount</code>, stored with <code>security add-generic-password -s wicket -a &lt;name&gt; -w &#39;&lt;secret&gt;&#39;</code>), an environment variable named by <code>secretEnv</code>, or an inline <code>clientSecret</code> for development only. The server validates the whole file at start. It sets an entry aside, with its reason, for any of these: an unknown key, a missing secret source, a braced GUID, a tenant that is not a GUID or a domain, an environment name outside <code>[A-Za-z0-9_-]</code>, or a <code>baseUrl</code> that is not https (the bearer token travels on every request). The other entries still load. <code>wicket_connections</code> lists the set-aside entries under <code>rejected</code>.</p>
+<p>Secrets resolve per connection in this order: the system&#39;s secret store (<code>keychainService</code> + <code>keychainAccount</code>: the Keychain on macOS, a DPAPI-protected file on Windows, stored through <code>/wicket:setup</code>), an environment variable named by <code>secretEnv</code>, or an inline <code>clientSecret</code> for development only. The server validates the whole file at start. It sets an entry aside, with its reason, for any of these: an unknown key, a missing secret source, a braced GUID, a tenant that is not a GUID or a domain, an environment name outside <code>[A-Za-z0-9_-]</code>, or a <code>baseUrl</code> that is not https (the bearer token travels on every request). The other entries still load. <code>wicket_connections</code> lists the set-aside entries under <code>rejected</code>.</p>
 <p>A <code>device_code</code> or <code>browser</code> connection never blocks a tool call on the human. The first call answers a <code>401 sign-in-required</code> problem: for device code it carries the verification URL and code (<code>verificationUri</code>, <code>userCode</code>); for browser sign-in a window has opened. The sign-in keeps running in the background, and the next call after the user signs in picks up the token. On a <code>401</code> from Business Central the server mints a fresh token and retries once.</p>
 <h2 id="35-tools">35. Tools</h2>
 <div class="table-wrap"><table><thead><tr>
