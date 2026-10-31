@@ -14,4 +14,8 @@ for i in $(seq 1 90); do
   if [ -s "$OUT" ]; then s1=$(stat -f%z "$OUT"); sleep 2; s2=$(stat -f%z "$OUT"); [ "$s1" = "$s2" ] && break; fi
 done
 kill $CPID 2>/dev/null || true; pkill -f "$PROFILE" 2>/dev/null || true
+# A relative link prints as file://<this machine's path>, which would publish the builder's folder.
+if LC_ALL=C grep -aq 'file://' "$OUT"; then
+  echo "pdf.sh: $OUT links to local files; make those links absolute" >&2; LC_ALL=C grep -ao 'file://[^)]*' "$OUT" | sort -u >&2; exit 1
+fi
 ls -la "$OUT"

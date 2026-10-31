@@ -107,6 +107,18 @@ page 94100 "Bcmag Rpc Endpoint"
     end;
 
     [ServiceEnabled]
+    procedure batch(envelope: Text): Text
+    begin
+        exit(RunDispatch('batch', envelope));
+    end;
+
+    [ServiceEnabled]
+    procedure changes(envelope: Text): Text
+    begin
+        exit(RunDispatch('changes', envelope));
+    end;
+
+    [ServiceEnabled]
     procedure action(envelope: Text): Text
     begin
         exit(RunDispatch('action', envelope));

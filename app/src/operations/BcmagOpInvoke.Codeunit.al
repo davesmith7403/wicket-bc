@@ -1,6 +1,8 @@
 codeunit 94118 "Bcmag Op Invoke"
 {
     var
+        RunnerCtx: Codeunit "Bcmag Op Runner Context";
+        Recorder: Codeunit "Bcmag Change Recorder";
         JsonRead: Codeunit "Bcmag Json Read";
         Exposure: Record "Bcmag Exposure";
         Problem: Codeunit "Bcmag Problem";
@@ -89,6 +91,8 @@ codeunit 94118 "Bcmag Op Invoke"
             if FailDetail = '' then
                 FailDetail := NoErrorTextLbl;
             Fail := Problem.NewFailure(422, 'invoke-failed', 'Invoke failed', FailDetail);
+            // A procedure may have committed before it failed: the dispatcher records it after rollback.
+            RunnerCtx.NoteFailedRun("Bcmag Change Kind"::ProcedureRun, RunName(CodeunitId, ProcedureName), TargetOf(Args), FailDetail);
             exit(false);
         end;
 
@@ -103,7 +107,31 @@ codeunit 94118 "Bcmag Op Invoke"
                 Result.Add('ok', true);
                 Response.Add('value', Result);
             end;
+        // An enrolled procedure can change data as freely as an action: every run is in the history.
+        Recorder.RecordRun("Bcmag Change Kind"::ProcedureRun, RunName(CodeunitId, ProcedureName), 0, TargetOf(Args), Recorder.SucceededOutcome(), ResultText(Response));
         exit(true);
+    end;
+
+    local procedure RunName(CodeunitId: Integer; ProcedureName: Text): Text
+    begin
+        exit(StrSubstNo('%1.%2', CodeunitId, ProcedureName));
+    end;
+
+    local procedure TargetOf(Args: JsonObject) SystemId: Guid
+    var
+        Tok: JsonToken;
+    begin
+        if Args.Get('systemId', Tok) then
+            if Tok.IsValue() then
+                if Evaluate(SystemId, Tok.AsValue().AsText()) then;
+    end;
+
+    local procedure ResultText(Response: JsonObject) Text: Text
+    var
+        Tok: JsonToken;
+    begin
+        if Response.Get('value', Tok) then
+            Tok.WriteTo(Text);
     end;
 
     local procedure EnrolledProcedures(CodeunitId: Integer) Suggest: JsonObject

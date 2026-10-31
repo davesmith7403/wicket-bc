@@ -104,6 +104,7 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
         // PREVIOUS request's flag — a caller's "unmask": false opt-out ignored exactly when it matters.
         // Only the 400 envelope refusal above precedes it; it reads no policy and logs no lifts.
         RunnerCtx.SetRequest(Operation, Data);
+        RunnerCtx.SetEnvelope(Id, Origin);
 
         // Posting through a wrapper COMMITS; without a key, a caller that loses the response (timeout,
         // dropped connection) cannot find out whether it took effect except by reconciling business
@@ -200,6 +201,7 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
 
         // The runner reads Operation/Data from the context set at the top of this request.
         NoAlError := Runner.Run(); // Codeunit.Run boundary lives inside; returns true only if no AL error escaped
+        RecordFailedRun();
 
         // On failure the runner deliberately raises an error so the boundary rolls its writes back
         // (a problem document must never leave partial writes committed). The outcome survives in the
@@ -252,9 +254,12 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
         // the retry gets 409 idempotency-indeterminate and is told to verify before using a new key.
         // Pre-execution refusals are raised ahead of the wrapper and stay releasable.
         // A preview or non-mutating verb ran inside the forced rollback: nothing can have persisted.
-        if (Status >= 500) and (Operation in ['action', 'invoke']) and not Retryable and Authorizer.IsMutatingRequest(Operation, Data) then
-            Settle(Reserved, IdempotencyKey, 200, false)
-        else
+        // The same uncertainty belongs in the change history: the wrapper may have committed, and the
+        // success entry it wrote inside the boundary was rolled back with everything else.
+        if (Status >= 500) and (Operation in ['action', 'invoke']) and not Retryable and Authorizer.IsMutatingRequest(Operation, Data) then begin
+            RecordRunAfterFailure(Operation, Data, ProblemDetail);
+            Settle(Reserved, IdempotencyKey, 200, false);
+        end else
             Settle(Reserved, IdempotencyKey, Status, Retryable);
 
         FinishRequest(Id, IdempotencyKey, Operation, Origin, Caller, Status, Cost, StartedAt, ProblemType, ProblemDetail);
@@ -487,6 +492,64 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
             if JsonRead.IsNonNullValue(Tok) then
                 exit(Tok.AsValue().AsText());
         exit('');
+    end;
+
+    // A mutating action or procedure that failed may have committed before it failed; the boundary
+    // rolled back the request's own writes, so its change history entry is written here, outside it.
+    local procedure RecordFailedRun()
+    var
+        RunnerCtx: Codeunit "Bcmag Op Runner Context"; // single instance: the request's context
+        Recorder: Codeunit "Bcmag Change Recorder";
+        Kind: Enum "Bcmag Change Kind";
+        Name, Detail: Text;
+        SystemId: Guid;
+    begin
+        if RunnerCtx.TakeFailedRun(Kind, Name, SystemId, Detail) then
+            Recorder.RecordRun(Kind, Name, 0, SystemId, Recorder.FailedOutcome(), Detail);
+    end;
+
+    // A mutating action or invoke that ended in a 5xx after its wrapper may have committed: one
+    // "Failed - may have changed data" entry, named and targeted from the request itself.
+    local procedure RecordRunAfterFailure(Operation: Text; Data: JsonObject; Detail: Text)
+    var
+        Recorder: Codeunit "Bcmag Change Recorder";
+        Tok: JsonToken;
+        Kind: Enum "Bcmag Change Kind";
+        Name: Text;
+        SystemId: Guid;
+    begin
+        if Operation = 'action' then begin
+            Kind := Kind::Action;
+            if Data.Get('action', Tok) then
+                if Tok.IsValue() then
+                    Name := Tok.AsValue().AsText();
+        end else begin
+            Kind := Kind::ProcedureRun;
+            if Data.Get('codeunitId', Tok) then
+                if Tok.IsValue() then
+                    Name := Tok.AsValue().AsText();
+            if Data.Get('procedure', Tok) then
+                if Tok.IsValue() then
+                    Name += '.' + Tok.AsValue().AsText();
+        end;
+        if not TargetSystemIdOf(Data, 'target', SystemId) then
+            if TargetSystemIdOf(Data, 'args', SystemId) then;
+        Recorder.RecordRun(Kind, Name, 0, SystemId, Recorder.FailedOutcome(), Detail);
+    end;
+
+    local procedure TargetSystemIdOf(Data: JsonObject; Member: Text; var SystemId: Guid): Boolean
+    var
+        Tok: JsonToken;
+    begin
+        if not Data.Get(Member, Tok) then
+            exit(false);
+        if not Tok.IsObject() then
+            exit(false);
+        if not Tok.AsObject().Get('systemId', Tok) then
+            exit(false);
+        if not Tok.IsValue() then
+            exit(false);
+        exit(Evaluate(SystemId, Tok.AsValue().AsText()));
     end;
 
     local procedure FinishRequest(Id: Text; IdempotencyKey: Text; Operation: Text; Origin: Text; Caller: Text; Status: Integer; Cost: Integer; StartedAt: DateTime; ProblemType: Text; ProblemDetail: Text)

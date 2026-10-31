@@ -17,11 +17,11 @@ This guide is the complete manual. It explains what Wicket is, how to install an
 
 ## 1. What it is
 
-Business Central ships a REST API with one page per entity. That model works for a fixed integration, but an LLM agent does not know in advance which of the several thousand tables it will need, and nobody can publish an API page for each of them. Wicket replaces the per-entity surface with **one API page and sixteen generic operations**. A caller addresses any table by its number and any enrolled business procedure by codeunit and name. The schema is discoverable through the protocol itself, so an agent can work against a tenant it has never seen: it asks what exists, asks what a table looks like, then reads or writes.
+Business Central ships a REST API with one page per entity. That model works for a fixed integration, but an LLM agent does not know in advance which of the several thousand tables it will need, and nobody can publish an API page for each of them. Wicket replaces the per-entity surface with **one API page and eighteen generic operations**. A caller addresses any table by its number and any enrolled business procedure by codeunit and name. The schema is discoverable through the protocol itself, so an agent can work against a tenant it has never seen: it asks what exists, asks what a table looks like, then reads or writes.
 
 The whole product is three parts:
 
-- **Wicket**, the core Business Central extension. One API page, sixteen bound actions, the deny-by-default security model, the audit log, telemetry, async export to Azure Blob Storage. It depends on Microsoft's System Application only, so it installs on any Business Central 26 SaaS environment without touching the Base Application.
+- **Wicket**, the core Business Central extension. One API page, eighteen bound actions, the deny-by-default security model, the audit log, the change history, telemetry, async export to Azure Blob Storage. It depends on Microsoft's System Application only, so it installs on any Business Central 26 SaaS environment without touching the Base Application.
 - **Wicket Actions - Base**, an optional companion extension. It supplies the strongly typed business actions a System-Application-only core cannot own: posting sales and purchase documents, posting general and item journal batches. It runs entirely through Wicket's invoke plane and installs with every action switched off.
 - **wicket-mcp**, a Model Context Protocol server (TypeScript, shipped as a self-contained program for Windows and Apple-silicon Macs). It fronts Wicket over stdio so Claude Desktop, Claude Code and any other MCP host see the operations as native tools, handles OAuth for one or many environments, and ships the protocol guide as a tool of its own. Agents without MCP can call the endpoint directly with any HTTP client.
 
@@ -83,7 +83,7 @@ Six of these refusals are raised before anything executes and can be lifted by a
 | `@requestId` | The envelope `id` echoed back. Problems carry it as `instance: urn:wicket:request:<id>`. | Correlating with the Operation Log |
 | `@nextLink` | Opaque paging cursor. | The next `query` page via `data.cursor` |
 
-## 3. The sixteen operations
+## 3. The eighteen operations
 
 | Plane | Operation | Purpose |
 |---|---|---|
@@ -98,11 +98,13 @@ Six of these refusals are raised before anything executes and can be lifted by a
 | Async | `status` | Track one async delivery request. |
 | Async | `cancel` | Cancel one async delivery request. |
 | Async | `requests` | List the caller's own async requests. |
+| Read | `changes` | What the agent created, changed or deleted, and the actions and procedures it ran, with old and new values per field (chapter 15). |
 | Execute | `invoke` | Run an enrolled wrapper codeunit by id and procedure name. |
 | Execute | `action` | Run a named business action such as `post-sales` from the Action Catalog. |
 | Write | `insert` | Create one record. |
 | Write | `modify` | Update one record with optimistic concurrency. |
 | Write | `delete` | Delete one record with optimistic concurrency. |
+| Write | `batch` | Insert, modify and delete many records in one call and one transaction: all or nothing, with a preview (chapter 22). |
 
 The planes are not just documentation: the shipped permission sets grant Execute on exactly the handlers of one plane, so a principal holding `Wicket - Read` cannot run an Execute or Write operation at all (see chapter 8).
 
@@ -134,7 +136,7 @@ The planes are not just documentation: the shipped permission sets grant Execute
 
 ## 6. Installing the extensions
 
-**The short path:** the [quick start](quick-start.html) puts this chapter, chapter 9's Simple Read-Only preset and the MCP install (chapter 34) on one page, for a first read-only connection to a sandbox.
+**The short path:** the [quick start](https://davesmith7403.github.io/wicket-bc/quick-start.html) puts this chapter, chapter 9's Simple Read-Only preset and the MCP install (chapter 34) on one page, for a first read-only connection to a sandbox.
 
 ### From a compiled package
 
@@ -221,8 +223,9 @@ Wicket ships its permission sets as composable AL objects. Assign exactly **one 
 |---|---|---|
 | `Wicket - Read` | A read-only agent | `discover`, `describe`, `query` (including aggregates and async delivery), `readBlob`, `capabilities`, `skill`, `pageUrl`, `whoAmI`, and its own `status` / `requests` / `cancel`. Writes only its own audit rows and queue rows. |
 | `Wicket - Execute` | An agent that may run enrolled business logic | Everything in Read plus `invoke` and `action`. The generic write plane stays closed. |
-| `Wicket - Edit` | A full read/write agent | Everything in Execute plus `insert`, `modify`, `delete`. |
-| `Wicket - Audit` | Support, security review | Opens every Wicket admin page and reads every Wicket table, including the logs and the request queue. Cannot change anything, purge logs or enter credentials. |
+| `Wicket - Edit` | A full read/write agent | Everything in Execute plus `insert`, `modify`, `delete`, `batch`. |
+| `Wicket - Audit` | Support, security review | Opens every Wicket admin page and reads every Wicket table, including the logs, the request queue and the change history (it includes `Wicket - Audit Changes`). Cannot change anything, purge logs or enter credentials. |
+| `Wicket - Audit Changes` | The customer's administrator, who reviews what the agent changed | Opens **Wicket Changes** and reads every user's entries; through the `changes` operation, a caller holding it sees every user's changes and may filter by `user`. Included by `Wicket - Audit` and so by `Wicket - Admin`. Role ID `WICKET - CHANGES`. |
 | `Wicket - Admin` | The operator | The whole control plane: setup, exposure, field policy, catalogs, credential entry, log purge. Includes Edit and Audit. |
 | `Wicket - Unmask` | A principal that must see masked fields in clear | A data grant, not a rung: lifts every Masked verdict to Clear (never Hidden), while Setup **Unmask Tier Enabled** is on. Not included by `Wicket - Admin`; assign it next to Read, Execute or Edit. `SUPER` holds it implicitly. |
 | `Wicket Data - Read` | A read-only agent that may read any table | Includes `Wicket - Read` and adds Read on every table in the tenant plus Execute on all tables, pages and queries. |
@@ -306,6 +309,15 @@ Every preset except Developer Sandbox leaves the field policy and masking as the
 | Field Policy Mode | ByClassification (fresh install), AllFields (upgraded from 1.1) | See chapter 11. Per-classification verdicts live on **Wicket Classification Rules**, not on Setup. |
 | Unmask Tier Enabled | on (off on a tenant upgraded from a version without it) | Whether the `Wicket - Unmask` permission set lifts Masked fields to Clear for its holders. `SUPER` holds it implicitly, so turn this off to keep `SUPER` from unmasking. Chapter 11. |
 | Describe Restricted Fields | off | When on, `describe` lists hidden fields with `readable: false` instead of omitting them. Masked fields are always listed (with `access: "masked"`). |
+
+### Change History
+
+| Field | Default | Meaning |
+|---|---|---|
+| Record Changes | Old and New Values (fresh install and upgrade) | `Off`: no change history. `Fields Only`: which fields changed, never their values. `Old and New Values`: each changed field's old and new value, as the field policy shows the field (a masked field keeps its mask, a hidden one only that it changed). A change applies from that moment; switching to a lower level does not rewrite what was recorded. |
+| Change Retention Days | 90 | Entries older than this are deleted by the maintenance task (the reaper), on its own schedule, independent of the Operation Log retention. 1 to 3650. |
+| Max Value Length | 250 | Longer values are cut, and the line is marked Truncated. 20 to 2048. |
+| Agent Can Read Changes | on | Whether the agent may read the history through the `changes` operation (`wicket_changes`). Off keeps it for people only, on the **Wicket Changes** page. |
 
 ### API Routing
 
@@ -742,6 +754,8 @@ Host the single-file edition of the usage guide (`docs/wicket-usage-skill.md` in
 | Watch async requests | **Wicket Request Queue** page | Status, progress, result size, the package's blob URL (never with a SAS token, since Audit users see every caller's rows), blob cleanup state, errors. The **Cancel** action stops a request. |
 | Async queue retention | Automatic (the reaper) | Failed, Cancelled and Expired requests that finished longer ago than **Operation Log Retention Days** are deleted. A Succeeded request is never purged directly (it expires first), and a row whose blob deletion is still `Pending` is never purged. The purge carries its own delete permission on the queue, so it works whichever user armed the reaper; a failure is logged as telemetry `WICKET-0004`. |
 | Telemetry | Application Insights | Event `WICKET-0001` per call with dimensions `operation`, `status`, `origin`, `cost`, `durationMs`, `problemType`; verbosity Normal below 400, Warning for 4xx, Error for 5xx. `WICKET-0002`: blob cleanup for a request gave up after the maximum number of delete attempts (12). `WICKET-0003`: one per finished async request (`requestId`, `status`, `packageFormat`, `resultRowCount`, `resultBytes`, `attemptCount`, `problemType`, `durationMs`; Warning when failed; never the query, URL or error text). `WICKET-0004`: the queue retention purge failed. `WICKET-0005`: the operation log retention purge failed. |
+| See what the agent changed | **Wicket Changes** page (from the Setup card or the Operation Log) | One row per record the agent created, changed or deleted through Wicket, and per action or procedure it ran, with When, What, Table, Record, Fields, User and Connection; the part below lists each changed field, old → new. Values are stored as the field policy showed the field at its baseline (never as an unmask grant showed it) and checked again against today's policy when shown, so a field that has since become masked or hidden is shown that way; a stored mask is never shown in clear. Actions: the Operation Log entry, Business Central's **Change Log** for the record (knock-on changes in other records, such as the entries a posting creates, are there, not here), open the record, delete the filtered entries. Writes that fail or roll back leave no entry; an action or procedure that failed after it may have committed is listed as *Failed - may have changed data*. Requires `Wicket - Audit Changes`. |
+| Change history retention | Automatic (the reaper) | Deletes entries older than **Change Retention Days**. |
 | Grant read-only visibility | `Wicket - Audit` | Every admin page, no changes. |
 | Rotate the storage credential | Setup card, **Set Azure Credential** | Replaces the stored secret; running requests finish with the old one. |
 | Emergency stop for writes | Setup card, **Read-Only Mode** | Effective on the next call. |
@@ -762,7 +776,7 @@ Authorization: Bearer <token>
 Content-Type: application/json
 ```
 
-`wicketEndpoint(0)` is literal; `Microsoft.NAV.` is the mandatory action namespace. **Each envelope shown below is sent serialised, as the string value of the body's single `envelope` member** (`{"envelope": "{\"id\":\"first-1\",…}"}`), and the answer's `value` is a string you parse once (chapter 18). The repository file `docs/smoke-test.http` contains all sixteen requests ready for the VS Code REST Client.
+`wicketEndpoint(0)` is literal; `Microsoft.NAV.` is the mandatory action namespace. **Each envelope shown below is sent serialised, as the string value of the body's single `envelope` member** (`{"envelope": "{\"id\":\"first-1\",…}"}`), and the answer's `value` is a string you parse once (chapter 18). The repository file `docs/smoke-test.http` contains all eighteen requests ready for the VS Code REST Client.
 
 ### 1. capabilities — does the endpoint answer, and what does it allow?
 
@@ -770,7 +784,7 @@ Content-Type: application/json
 { "id": "first-1", "issuedAt": "2026-09-04T09:00:00Z", "origin": "first-steps", "data": {} }
 ```
 
-Expect `response.value.product = "Wicket"`, `transport.httpStatus = "always-200"`, sixteen entries in `operations`, and the live `limits`, `readOnly`, `fieldPolicy`, `async` and `actions`.
+Expect `response.value.product = "Wicket"`, `transport.httpStatus = "always-200"`, eighteen entries in `operations`, and the live `limits`, `readOnly`, `fieldPolicy`, `async` and `actions`.
 
 ### 2. whoAmI — which principal and company did the token resolve to?
 
@@ -1045,7 +1059,7 @@ Returns `{ contentType, bytesBase64 }`. The content type is the stored MIME type
 
 The field policy is checked first, before the record is looked up, and problems name the field by number only. A hidden field and a field number that does not exist both answer `403 field-restricted`, so a probe cannot tell hidden from absent; a binary field the caller may read only masked answers `403 field-masked`; a readable non-binary field is `400 not-binary`. An empty field returns `404 empty-blob`, a MediaSet field `422 mediaset-unsupported`, and a binary larger than 10 MB `413 blob-too-large` (the bytes travel base64-encoded inside one JSON response).
 
-## 22. insert, modify, delete
+## 22. insert, modify, delete, batch
 
 ### insert
 
@@ -1089,6 +1103,21 @@ The record is re-located under the caller's security filter and locked, then the
 ```
 
 Same concurrency rules. Result: `{ deleted: true, recordId }`.
+
+### batch
+
+```json
+{ "data": { "preview": true, "items": [
+  { "op": "insert", "tableId": 36, "values": { "Document Type": "Order", "Sell-to Customer No.": "10000" } },
+  { "op": "insert", "tableId": 37, "values": { "Document Type": "Order", "Document No.": { "fromItem": 0, "field": "No." },
+                                                "Line No.": 10000, "Type": "Item", "No.": "1896-S", "Quantity": 2 } },
+  { "op": "modify", "tableId": 18, "recordId": "<@recordId>", "etag": "<@etag>", "values": { "Credit Limit (LCY)": 75000 } }
+] } }
+```
+
+Up to 100 items (`limits.maxBatchItems`), any tables, each in the shape of `insert`, `modify` or `delete` plus `op`. Every item runs through the same handler as a single write, so exposure, the field policy, validation, the etag check and the change history apply to each; the items run in one transaction, with explicit commits inside table triggers ignored, so **all are written or none**. The first failing item stops the batch: the problem is that item's own (`400`, `403`, `412`, `422` …) with the extension members `item` (its index) and `itemOp`, and a `detail` starting `items[1] (insert, table 37): `; nothing is written. `preview: true` runs every item inside a forced rollback and answers the per-item results (their recordIds and etags describe records that no longer exist) or the first failure; it is allowed in Read-Only Mode.
+
+A value `{ "fromItem": n, "field": "<name>" }` (or `"fieldNo"`) is that field of the record item n wrote, read after it ran — the header's number in the example above. `recordId: { "fromItem": n }` targets the record item n created or changed. Only earlier items; a referenced field must be readable in clear (`403 field-restricted` / `field-masked` otherwise, so a hidden value is never copied into a visible field); a later item, a deleted record or an unknown field is `400 invalid-reference`. Result: `{ items: [ { index, op, recordId, @etag? | deleted } ], count, preview? }`; cost is the number of items. Requires `Wicket - Edit`. An idempotency key covers the whole batch; a replay re-checks every item's table.
 
 ### Making writes safe to retry
 
@@ -1220,7 +1249,7 @@ The URL in a response is signed when the response is built. A replay of the acce
 
 All three are strictly caller-scoped: another principal's request id is indistinguishable from a nonexistent one (`404 unknown-request`). Backpressure: more than Max Active Requests open requests return `429 too-many-requests`. An `idempotencyKey` on the submit replays to the same `requestId` instead of spawning a duplicate export.
 
-## 25. capabilities, skill, pageUrl, whoAmI
+## 25. capabilities, skill, pageUrl, whoAmI, changes
 
 ### capabilities
 
@@ -1248,6 +1277,16 @@ All three are strictly caller-scoped: another principal's request id is indistin
 ### whoAmI
 
 `{ "data": {} }` returns `{ userSecurityId, userId, company, readOnly, fieldPolicy, unmaskGranted, activeExceptions, strongEtag, serverTime }`; `unmaskGranted` says whether the Unmask tier lifts masks for this caller right now and `activeExceptions` counts the caller's active per-user exceptions, which answers "why do I see this value in clear?" without admin access. Use it after minting a token or switching connections, and use `serverTime` as the watermark for incremental sync.
+
+### changes
+
+```json
+{ "data": {} }
+{ "data": { "from": "2026-10-01T00:00:00Z", "tableId": 18, "kind": "changed", "top": 50 } }
+{ "data": { "user": "ANNA", "viaConnection": "contoso-sandbox", "cursor": "<@nextLink>" } }
+```
+
+Returns `{ value: [ { entryNo, createdAt, kind, tableId, tableName, recordKey, systemId?, user, connection, requestId, name?, outcome?, result?, fieldCount, fields: [ { fieldNo, fieldName, shownAs, old?, new?, truncated? } ] } ], @nextLink? }`, newest first; `kind` is `created`, `changed`, `deleted`, `action` or `procedure`, and `shownAs` is `clear`, `masked` or `hidden` (no values). A caller sees its own entries; one holding `Wicket - Audit Changes` sees everyone's and may filter by `user` (`403 changes-forbidden` otherwise). `top` defaults to 20, capped at 100; pass `@nextLink` back as `cursor` with the same filters. `403 changes-off` while Setup **Record Changes** is Off or **Agent Can Read Changes** is off.
 
 ## 26. Error reference
 
@@ -1287,7 +1326,11 @@ All three are strictly caller-scoped: another principal's request id is indistin
 | `unknown-procedure` · 404 | Not enrolled | Pick from `suggest.procedures`. |
 | `empty-blob` · 404 | Media has no content | Skip. |
 | `etag-required` / `no-etag-available` · 409 | Tenant requires an etag | Read first, send `data.etag`. |
+| `batch-too-large` · 400 | A `batch` with more than 100 items | Split it. |
+| `invalid-reference` · 400 | A batch `fromItem` naming a later item, a deleted record or an unknown field | Reference earlier items only; take the field name from `describe`. |
 | `role-forbidden` · 403 | The principal's Wicket role is below the operation | Do not retry; assign the permission set named in `detail`. |
+| `changes-off` · 403 | `changes` while the change history is off or not readable by the agent | An administrator turns it on (Setup, Change History); the Wicket Changes page still shows what was recorded. |
+| `changes-forbidden` · 403 | `changes` with `user` without `Wicket - Audit Changes` | Omit `user` to see your own changes, or assign the set. |
 | `idempotency-conflict` · 409 | Key reused with a different body, also after an earlier attempt released it | New key for a new request. |
 | `idempotency-in-progress` · 409 | The same key is still executing | Wait, then resend the identical request for its result. |
 | `idempotency-indeterminate` · 409 | An earlier attempt with this key may or may not have taken effect | Query the affected records; retry with a new key if needed. |
@@ -1493,7 +1536,7 @@ A tenant where Wicket exists for read-only analysis by an internal agent, with a
 
 ## 34. Install and configure
 
-**The short path:** the [quick start](quick-start.html) covers the plugin install and `/wicket:setup` together with the Business Central side, on one page.
+**The short path:** the [quick start](https://davesmith7403.github.io/wicket-bc/quick-start.html) covers the plugin install and `/wicket:setup` together with the Business Central side, on one page.
 
 The MCP server, the plugin and the usage skill live in their own repository, [davesmith7403/wicket](https://github.com/davesmith7403/wicket). In Claude Code, install the plugin:
 
@@ -1503,6 +1546,8 @@ The MCP server, the plugin and the usage skill live in their own repository, [da
 ```
 
 Then run **`/wicket:setup`**. It asks how you sign in: in a browser window (recommended), with a device code, or as an app with a client secret. It works out the tenant from a pasted Business Central address or a work email, lists the environments and companies to pick from, then saves and tests the connection. No GUID is typed by hand, and no restart is needed. Without a client ID of your own, Wicket uses its default client, so no app registration is needed. A client secret never passes through the chat: setup opens a one-time page in your browser, and the secret goes from there into your computer's own secret store (the Keychain on a Mac, protected for your Windows account on Windows). The same command shows what is configured (`/wicket:setup view`), fixes a failing connection, changes the default and removes connections. The server starts even when nothing is configured, and every tool then answers `503 connection-unavailable` pointing to `/wicket:setup`.
+
+In the Claude desktop app, download `wicket-<version>.mcpb` from the plugin repository's [latest release](https://github.com/davesmith7403/wicket/releases/latest) and open it: the app installs Wicket with one click, the same server and skill as the plugin. Then say **"set up Wicket"** in a chat; the same guided setup runs there, and connections are shared with Claude Code on the same machine. Pages Claude builds in the desktop app, such as a dashboard, can query Wicket live while they are open.
 
 To run the server standalone, or to configure connections by hand, clone that repository:
 

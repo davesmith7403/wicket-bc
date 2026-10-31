@@ -69,7 +69,7 @@ codeunit 94148 "Bcmag Op Authorizer"
         // invoke and action are treated as mutating: a wrapper codeunit can write, so a full
         // read-only endpoint must refuse them even though some wrappers only read. The one
         // exception is decided per request, in IsMutatingRequest.
-        exit(Operation in ['insert', 'modify', 'delete', 'invoke', 'action']);
+        exit(Operation in ['insert', 'modify', 'delete', 'batch', 'invoke', 'action']);
     end;
 
     // Per-request refinement of IsMutating: an `action` request whose wrapper runs inside the forced
@@ -77,9 +77,25 @@ codeunit 94148 "Bcmag Op Authorizer"
     // requirement let it through. Everything else follows IsMutating.
     procedure IsMutatingRequest(Operation: Text; Data: JsonObject): Boolean
     begin
+        // A batch preview runs inside Bcmag Batch Rollback: nothing it does can persist.
+        if Operation = 'batch' then
+            exit(not IsPreview(Data));
         if Operation <> 'action' then
             exit(IsMutating(Operation));
         exit(not RunsInRollback(Data));
+    end;
+
+    local procedure IsPreview(Data: JsonObject): Boolean
+    var
+        Tok: JsonToken;
+        Preview: Boolean;
+    begin
+        if Data.Get('preview', Tok) then
+            if Tok.IsValue() then
+                if not Tok.AsValue().IsNull() then
+                    if TryAsBool(Tok.AsValue(), Preview) then
+                        exit(Preview);
+        exit(false);
     end;
 
     // True for a preview (data.preview = true) and for a verb enrolled with Is Mutating = false — the
@@ -191,6 +207,8 @@ codeunit 94148 "Bcmag Op Authorizer"
             'insert', 'modify', 'delete':
                 if ReadInt(Data, 'tableId', TableId) then
                     exit(CheckTableWrite(TableId, Operation, Fail));
+            'batch':
+                exit(CheckBatchTargets(Data, Fail));
             'invoke':
                 if ReadInt(Data, 'codeunitId', CodeunitId) then
                     if ReadText(Data, 'procedure', Name) then
@@ -227,6 +245,27 @@ codeunit 94148 "Bcmag Op Authorizer"
         end;
         RecRef.Close();
         ReadableTables.Add(TableId);
+        exit(true);
+    end;
+
+    // A replayed batch: every item's table must still be writable for its op today.
+    local procedure CheckBatchTargets(Data: JsonObject; var Fail: JsonObject): Boolean
+    var
+        Tok, ItemTok : JsonToken;
+        Op: Text;
+        TableId: Integer;
+    begin
+        if not Data.Get('items', Tok) then
+            exit(true);
+        if not Tok.IsArray() then
+            exit(true);
+        foreach ItemTok in Tok.AsArray() do
+            if ItemTok.IsObject() then
+                if ReadText(ItemTok.AsObject(), 'op', Op) then
+                    if LowerCase(Op) in ['insert', 'modify', 'delete'] then
+                        if ReadInt(ItemTok.AsObject(), 'tableId', TableId) then
+                            if not CheckTableWrite(TableId, LowerCase(Op), Fail) then
+                                exit(false);
         exit(true);
     end;
 

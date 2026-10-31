@@ -7,6 +7,7 @@ codeunit 94119 "Bcmag Op Capabilities"
     var
         FilterApplier: Codeunit "Bcmag Filter Applier";
         AppInfo: Codeunit "Bcmag App Info";
+        OpBatch: Codeunit "Bcmag Op Batch";
         SchemaVersionTok: Label '1.0', Locked = true;
 
     procedure Run(Data: JsonObject; var Response: JsonObject; var Fail: JsonObject; var Cost: Integer): Boolean
@@ -47,11 +48,13 @@ codeunit 94119 "Bcmag Op Capabilities"
         AddOperation(Operations, 'insert', 'Create a record', '{ tableId, values|valuesByFieldNo, init? }');
         AddOperation(Operations, 'modify', 'Update a record (optimistic via data.etag)', '{ tableId, recordId, values|valuesByFieldNo, etag?, validate? }');
         AddOperation(Operations, 'delete', 'Delete a record (optimistic via data.etag)', '{ tableId, recordId, etag? }');
+        AddOperation(Operations, 'batch', 'Insert, modify and delete many records in one call and one transaction: all are written or none (see limits.maxBatchItems)', '{ items: [ { op: "insert"|"modify"|"delete", tableId, recordId?, values?|valuesByFieldNo?, etag?, validate?, init? } ], preview? } -> { items: [ { index, op, recordId, @etag?|deleted } ], count, preview? }. A failure names the item ("item", "itemOp"; detail starts items[i]) and nothing is written. preview: true runs every item and rolls back. A value or recordId may be { fromItem: n, field?: "<name>", fieldNo? }: a field of, or the record from, an earlier item (an order header''s "No." for its lines); the field must be readable in clear.');
         AddOperation(Operations, 'invoke', 'Run an enrolled procedure', '{ codeunitId, procedure, args?, returnShape? }');
         AddOperation(Operations, 'capabilities', 'This document', '{ }');
         AddOperation(Operations, 'status', 'Track one async delivery request (see "async")', '{ requestId } -> { requestId, status, packageFormat, createdAt, scheduledFor, startedAt, completedAt, expiresAt, progressRows, resultRowCount, resultBytes, packageUrl?, problem? }');
         AddOperation(Operations, 'cancel', 'Cancel an async request (before or during execution)', '{ requestId } -> { requestId, status }');
         AddOperation(Operations, 'requests', 'List the caller''s async requests', '{ status?, top? } -> [ status-projection ]');
+        AddOperation(Operations, 'changes', 'What the agent created, changed or deleted, and the actions and procedures it ran, old and new per field (Setup: Change History)', '{ from?, to?, tableId?, viaConnection?, kind?: "created"|"changed"|"deleted"|"action"|"procedure", user? (Wicket - Audit Changes only), top?, cursor? } -> [ { entryNo, createdAt, kind, tableId, tableName, recordKey, systemId?, user, connection, requestId, name?, outcome?, result?, fieldCount, fields: [ { fieldNo, fieldName, shownAs: "clear"|"masked"|"hidden", old?, new?, truncated? } ] } ], @nextLink?. Your own entries unless you hold Wicket - Audit Changes; 403 changes-off when the history is off or not readable by the agent.');
         AddOperation(Operations, 'action', 'Run a named business action (see "actions")', '{ action, target?: { systemId }, args?, preview? }');
         AddOperation(Operations, 'skill', 'Fetch the usage guide with progressive disclosure', '{ mode?: "toc"|"section"|"full", section? } -> toc: { title, description?, sections[] }; section: { section, content }; full: { content }');
         AddOperation(Operations, 'pageUrl', 'Deep link into the BC web client for one record', '{ tableId | table: "<name>"|"#<no>", systemId?|recordId? (one required; systemId wins), pageId? } -> { pageUrl, pageId }. Uses the table''s default lookup page when pageId is omitted (404 no-page if the table has none). Requires read exposure on the table.');
@@ -76,6 +79,7 @@ codeunit 94119 "Bcmag Op Capabilities"
         Limits.Add('maxSelectFields', Setup."Max Select Fields");
         Limits.Add('scanBudget', Setup."Per-Call Scan Budget");
         Limits.Add('maxInMembers', FilterApplier.MaxInMembers());
+        Limits.Add('maxBatchItems', OpBatch.MaxItems());
         Caps.Add('limits', Limits);
 
         Caps.Add('readOnly', Setup."Read-Only Mode");

@@ -28,7 +28,7 @@ codeunit 94146 "Bcmag Role Gate"
                     Fail := Refusal(Operation, 'Wicket - Execute');
                     exit(false);
                 end;
-            Operation in ['insert', 'modify', 'delete']:
+            Operation in ['insert', 'modify', 'delete', 'batch']:
                 if not WriteGate.WritePermission() then begin
                     Fail := Refusal(Operation, 'Wicket - Edit');
                     exit(false);

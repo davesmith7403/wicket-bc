@@ -17,6 +17,8 @@ codeunit 94121 "Bcmag Log Purge"
     [InherentPermissions(PermissionObjectType::TableData, Database::"Bcmag Operation Log", 'rd')]
     [InherentPermissions(PermissionObjectType::TableData, Database::"Bcmag Idempotency Log", 'rd')]
     [InherentPermissions(PermissionObjectType::TableData, Database::"Bcmag Idempotency Reservation", 'rd')]
+    [InherentPermissions(PermissionObjectType::TableData, Database::"Bcmag Change Entry", 'rd')]
+    [InherentPermissions(PermissionObjectType::TableData, Database::"Bcmag Field Change", 'rd')]
     procedure PurgeExpired()
     var
         Setup: Record "Bcmag Setup";
@@ -28,6 +30,8 @@ codeunit 94121 "Bcmag Log Purge"
         RetentionDays: Integer;
     begin
         Setup.GetSingleton();
+        // The change history keeps its own retention, whatever the Operation Log's is.
+        PurgeChangeHistory(Setup."Change Retention Days");
         RetentionDays := Setup."Operation Log Retention Days";
         if RetentionDays <= 0 then
             exit;
@@ -56,5 +60,30 @@ codeunit 94121 "Bcmag Log Purge"
         Reservation.SetRange(State, Reservation.State::"In Progress");
         Reservation.SetFilter("Reserved At", '<%1', Cutoff);
         Reservation.DeleteAll(false);
+    end;
+
+    // Change history entries older than the retention go, with their field lines. Entry numbers rise
+    // with time, so the lines are removed by the highest expired entry number.
+    [InherentPermissions(PermissionObjectType::TableData, Database::"Bcmag Change Entry", 'rd')]
+    [InherentPermissions(PermissionObjectType::TableData, Database::"Bcmag Field Change", 'rd')]
+    local procedure PurgeChangeHistory(RetentionDays: Integer)
+    var
+        Entry: Record "Bcmag Change Entry";
+        FieldChange: Record "Bcmag Field Change";
+        Cutoff: DateTime;
+    begin
+        if RetentionDays <= 0 then
+            exit;
+        Cutoff := CreateDateTime(CalcDate(StrSubstNo('<-%1D>', RetentionDays), Today()), 0T);
+        Entry.SetCurrentKey("Created At");
+        Entry.SetFilter("Created At", '<%1', Cutoff);
+        if Entry.IsEmpty() then
+            exit;
+        if Entry.FindSet() then
+            repeat
+                FieldChange.SetRange("Entry No.", Entry."Entry No.");
+                FieldChange.DeleteAll(false);
+            until Entry.Next() = 0;
+        Entry.DeleteAll(false);
     end;
 }

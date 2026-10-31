@@ -25,7 +25,7 @@ codeunit 94319 "Bcmag Capabilities Test"
 
         LibraryAssert.IsTrue(Value.Get('operations', Tok), 'operations missing');
         Operations := Tok.AsArray();
-        LibraryAssert.AreEqual(16, Operations.Count(), 'expected 16 operations (keep in step with the endpoint page)');
+        LibraryAssert.AreEqual(18, Operations.Count(), 'expected 18 operations (keep in step with the endpoint page)');
 
         LibraryAssert.IsTrue(Value.Get('urlTemplate', Tok), 'urlTemplate missing');
         UrlTemplate := Tok.AsValue().AsText();

@@ -127,6 +127,16 @@ codeunit 94325 "Bcmag Permission Set Test"
     end;
 
     [Test]
+    procedure ReadRoleReachesTheChangeHistoryOnlyThroughWicket()
+    begin
+        // The history holds other principals' values: a Read user records its own changes and reads them
+        // through the changes operation (indirect), never by opening the tables in the client.
+        AssertTableData('Wicket - Read', Database::"Bcmag Change Entry", false, false, false, false);
+        AssertTableData('Wicket - Read', Database::"Bcmag Field Change", false, false, false, false);
+        AssertTableData('Wicket - Changes', Database::"Bcmag Change Entry", true, false, false, false);
+    end;
+
+    [Test]
     procedure AdminRoleOwnsTheControlPlane()
     begin
         AssertTableData('Wicket - Admin', Database::"Bcmag Setup", true, true, true, true);
@@ -290,6 +300,7 @@ codeunit 94325 "Bcmag Permission Set Test"
         FilterRole(RoleId, Perm);
         Perm.SetRange("Object Type", ObjTypeTableData());
         Perm.SetRange("Delete Permission", Perm."Delete Permission"::Yes);
+        ExceptChangesGate(Perm);
         LibraryAssert.IsTrue(Perm.IsEmpty(), StrSubstNo('"%1" must not grant Delete on any table', RoleId));
     end;
 
@@ -300,6 +311,7 @@ codeunit 94325 "Bcmag Permission Set Test"
         AssertNoDeleteAnywhere(RoleId);
         FilterRole(RoleId, Perm);
         Perm.SetRange("Object Type", ObjTypeTableData());
+        ExceptChangesGate(Perm);
         Perm.SetRange("Insert Permission", Perm."Insert Permission"::Yes);
         LibraryAssert.IsTrue(Perm.IsEmpty(), StrSubstNo('"%1" must not grant Insert on any table', RoleId));
         Perm.SetRange("Insert Permission");
@@ -373,6 +385,13 @@ codeunit 94325 "Bcmag Permission Set Test"
             exit(false);
         Perm.SetRange("Object ID", 0);
         exit(Perm.FindFirst());
+    end;
+
+    // The Changes Gate is an empty sentinel no code writes: write permission on it IS the audit grant
+    // (Wicket - Audit Changes, included by Wicket - Audit), so it changes nothing.
+    local procedure ExceptChangesGate(var Perm: Record "Expanded Permission")
+    begin
+        Perm.SetFilter("Object ID", '<>%1', Database::"Bcmag Changes Gate");
     end;
 
     local procedure AssertNoDeleteAnywhereExceptGates(RoleId: Text)

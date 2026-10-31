@@ -26,6 +26,8 @@ permissionset 94107 "Wicket - Admin"
         tabledata "Bcmag Procedure Catalog" = RIMD,
         tabledata "Bcmag Action Catalog" = RIMD,
         tabledata "Bcmag Operation Log" = RIMD,
+        tabledata "Bcmag Change Entry" = RIMD,
+        tabledata "Bcmag Field Change" = RIMD,
         tabledata "Bcmag Idempotency Log" = RIMD,
         tabledata "Bcmag Idempotency Reservation" = RIMD,
         tabledata "Bcmag Request Queue" = RIMD,

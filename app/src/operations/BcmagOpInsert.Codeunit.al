@@ -3,6 +3,7 @@ codeunit 94115 "Bcmag Op Insert"
     var
         Exposure: Record "Bcmag Exposure";
         Problem: Codeunit "Bcmag Problem";
+        Recorder: Codeunit "Bcmag Change Recorder";
         Coercer: Codeunit "Bcmag Value Coercer";
         Codec: Codeunit "Bcmag Record Id Codec";
         Projector: Codeunit "Bcmag Projector";
@@ -56,6 +57,7 @@ codeunit 94115 "Bcmag Op Insert"
         // minted from memory can miss with 412 on the caller's very next write. The read path always
         // mints from persisted values; the write path must hand back the same kind of token.
         RecRef.Get(RecRef.RecordId);
+        Recorder.RecordCreated(RecRef);
 
         Result.Add('recordId', Codec.Encode(RecRef.RecordId));
         if Projector.EtagOf(RecRef) <> '' then

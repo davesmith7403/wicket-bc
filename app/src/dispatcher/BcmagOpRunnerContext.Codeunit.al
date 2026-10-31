@@ -31,6 +31,13 @@ codeunit 94126 "Bcmag Op Runner Context"
         HasResult: Boolean;
         Lifts: List of [Text];
         PolicyGen: Integer;
+        RequestId: Text;
+        RequestOrigin: Text;
+        HasFailedRun: Boolean;
+        FailedRunKind: Enum "Bcmag Change Kind";
+        FailedRunName: Text;
+        FailedRunSystemId: Guid;
+        FailedRunDetail: Text;
 
     procedure SetRequest(NewOperation: Text; NewData: JsonObject)
     begin
@@ -42,7 +49,52 @@ codeunit 94126 "Bcmag Op Runner Context"
         OpOk := false;
         HasResult := false;
         Clear(Lifts);
+        RequestId := '';
+        RequestOrigin := '';
+        HasFailedRun := false;
         BumpPolicyGeneration();
+    end;
+
+    // The envelope's id and origin, for what a request leaves behind besides the Operation Log (the
+    // change history names its request and connection). Set by the dispatcher right after SetRequest.
+    procedure SetEnvelope(NewRequestId: Text; NewOrigin: Text)
+    begin
+        RequestId := NewRequestId;
+        RequestOrigin := NewOrigin;
+    end;
+
+    procedure GetRequestId(): Text
+    begin
+        exit(RequestId);
+    end;
+
+    procedure GetOrigin(): Text
+    begin
+        exit(RequestOrigin);
+    end;
+
+    // A mutating action or procedure that failed may already have committed (a posting commits inside
+    // the run). The runner then rolls the request's own writes back, so its change history entry is
+    // written by the dispatcher AFTER the boundary, from what the handler noted here.
+    procedure NoteFailedRun(Kind: Enum "Bcmag Change Kind"; Name: Text; SystemId: Guid; Detail: Text)
+    begin
+        HasFailedRun := true;
+        FailedRunKind := Kind;
+        FailedRunName := Name;
+        FailedRunSystemId := SystemId;
+        FailedRunDetail := Detail;
+    end;
+
+    procedure TakeFailedRun(var Kind: Enum "Bcmag Change Kind"; var Name: Text; var SystemId: Guid; var Detail: Text): Boolean
+    begin
+        if not HasFailedRun then
+            exit(false);
+        HasFailedRun := false;
+        Kind := FailedRunKind;
+        Name := FailedRunName;
+        SystemId := FailedRunSystemId;
+        Detail := FailedRunDetail;
+        exit(true);
     end;
 
     procedure GetOperation(): Text

@@ -3,7 +3,7 @@
 **Generic JSON-RPC over Microsoft Dynamics 365 Business Central, for LLM agents.**
 
 Wicket is a Business Central extension (BC 26+, AL, runtime 16.0, SaaS Online) that exposes a
-single, generic RPC protocol over BC data and logic — one API page, sixteen operations, every BC
+single, generic RPC protocol over BC data and logic — one API page, eighteen operations, every BC
 table reachable by ID — designed so an LLM agent can discover, read, write, invoke, run named
 business actions, and export asynchronously against BC safely and without bespoke per-entity endpoints.
 
@@ -28,9 +28,9 @@ generic bound actions. A caller addresses any exposed table by ID and any enroll
 through the protocol itself (`discover` → `describe` → `capabilities`), so an agent can operate
 against an unfamiliar tenant without prior knowledge.
 
-## The sixteen operations
+## The eighteen operations
 
-All sixteen are `[ServiceEnabled]` bound actions on `page 94100 "Bcmag Rpc Endpoint"`:
+All eighteen are `[ServiceEnabled]` bound actions on `page 94100 "Bcmag Rpc Endpoint"`:
 
 | | Operation | Purpose |
 |---|---|---|
@@ -40,6 +40,7 @@ All sixteen are `[ServiceEnabled]` bound actions on `page 94100 "Bcmag Rpc Endpo
 | | `readBlob` | Fetch one binary (BLOB/Media) field as base64 + `contentType`, by the `@recordId` from a query row (at most 10 MB). |
 | | `insert` | Create a record from `values` / `valuesByFieldNo`; returns `recordId` + `@etag`. |
 | | `modify` | Update a record by `data.recordId`, optimistic concurrency via `data.etag`; primary-key fields are immutable (`400 pk-immutable`). |
+| | `batch` | Insert, modify and delete many records in one call and one transaction (all or nothing, at most 100 items); `preview: true` rolls back; items may reference an earlier item's record (`{ fromItem, field }`). |
 | | `delete` | Delete a record by `data.recordId`, optimistic concurrency via `data.etag`. |
 | **Control plane** | `invoke` | Run an enrolled wrapper codeunit by id (deny-by-default via the Procedure Catalog). |
 | | `capabilities` | Machine-readable self-description: url template, transport contract, envelope, operation schemas, filter grammar, live limits, the enabled `actions`. |
@@ -48,6 +49,7 @@ All sixteen are `[ServiceEnabled]` bound actions on `page 94100 "Bcmag Rpc Endpo
 | **Async** | `status` | Track one async delivery request by `requestId` (strictly caller-scoped). |
 | | `cancel` | Cancel one async request — outright if not started (scheduled or queued), cooperatively (at the worker's next checkpoint) if running. |
 | | `requests` | List the caller's own async requests, newest first (`status?`, `top?`). |
+| **Change history** | `changes` | What the agent created, changed or deleted, and the actions and procedures it ran, old and new per field under the field policy; the caller's own entries unless it holds `Wicket - Audit Changes` (Setup: Change History). |
 | **Actions & guidance** | `action` | Run a named business action (e.g. posting) from the deny-by-default Action Catalog — a stable verb over the invoke plane. |
 | | `skill` | Serve the protocol usage guide from a configured HTTPS URL, with progressive disclosure (`mode`: `toc` / `section` / `full`; https-only, 1 MB cap). |
 
@@ -362,7 +364,7 @@ Then, in BC:
    `Async Enabled` on.
 
 Smoke-test with [docs/smoke-test.http](docs/smoke-test.http) (VS Code REST Client) — one request per
-operation, all sixteen.
+operation, all eighteen.
 
 ## Using it as an agent
 
@@ -370,8 +372,9 @@ The agent side of Wicket lives in its own repository, **[davesmith7403/wicket](h
 
 - **Plugin:** the MCP server, the usage skill and the `/wicket:orient` and `/wicket:inventory`
   commands in one install (`/plugin marketplace add davesmith7403/wicket`, then
-  `/plugin install wicket@wicket`).
-- **MCP server:** a Model Context Protocol server (TypeScript / Bun) exposing **23 `wicket_*` tools**,
+  `/plugin install wicket@wicket`). For the desktop app, each release also carries
+  `wicket-<version>.mcpb`, a one-click extension with the same server and skill.
+- **MCP server:** a Model Context Protocol server (TypeScript / Bun) exposing **26 `wicket_*` tools**,
   one per Wicket operation plus async export, paging, API-first reads, the per-connection tenant map
   and multi-connection setups (service principal or device-code sign-in). It builds the envelope,
   POSTs each bound action, and unwraps `response.value`, surfacing the RFC 7807 problem on failure.

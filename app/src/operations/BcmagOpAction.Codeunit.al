@@ -27,6 +27,8 @@ codeunit 94141 "Bcmag Op Action"
         JsonRead: Codeunit "Bcmag Json Read";
         Problem: Codeunit "Bcmag Problem";
         InvokeContext: Codeunit "Bcmag Invoke Context";
+        RunnerCtx: Codeunit "Bcmag Op Runner Context";
+        Recorder: Codeunit "Bcmag Change Recorder";
 
     procedure Run(Data: JsonObject; var Response: JsonObject; var Fail: JsonObject; var Cost: Integer): Boolean
     var
@@ -36,7 +38,7 @@ codeunit 94141 "Bcmag Op Action"
         ActionCode: Text;
         FailDetail: Text;
         Preview, InRollback : Boolean;
-        MergedArgs: JsonObject;
+        MergedArgs, OkValue: JsonObject;
         NoErrorTextLbl: Label 'the wrapper failed without an error message', Locked = true;
     begin
         Cost := 1;
@@ -102,6 +104,9 @@ codeunit 94141 "Bcmag Op Action"
             if FailDetail = '' then
                 FailDetail := NoErrorTextLbl;
             Fail := Problem.NewFailure(422, 'action-failed', 'Action failed', FailDetail);
+            // A real run may have committed before it failed: the dispatcher records it after rollback.
+            if not InRollback then
+                RunnerCtx.NoteFailedRun("Bcmag Change Kind"::Action, ActionCode, TargetOf(MergedArgs), FailDetail);
             exit(false);
         end;
 
@@ -109,11 +114,31 @@ codeunit 94141 "Bcmag Op Action"
         if InvokeContext.HasResultValue() then
             Response.Add('value', InvokeContext.GetResult())
         else begin
-            Clear(MergedArgs);
-            MergedArgs.Add('ok', true);
-            Response.Add('value', MergedArgs);
+            Clear(OkValue);
+            OkValue.Add('ok', true);
+            Response.Add('value', OkValue);
         end;
+        // A real run is in the change history; a preview or a verb that changes nothing is not.
+        if not InRollback then
+            Recorder.RecordRun("Bcmag Change Kind"::Action, ActionCode, 0, TargetOf(MergedArgs), Recorder.SucceededOutcome(), ResultText(Response));
         exit(true);
+    end;
+
+    local procedure TargetOf(Args: JsonObject) SystemId: Guid
+    var
+        Tok: JsonToken;
+    begin
+        if Args.Get('systemId', Tok) then
+            if Tok.IsValue() then
+                if Evaluate(SystemId, Tok.AsValue().AsText()) then;
+    end;
+
+    local procedure ResultText(Response: JsonObject) Text: Text
+    var
+        Tok: JsonToken;
+    begin
+        if Response.Get('value', Tok) then
+            Tok.WriteTo(Text);
     end;
 
     // True when the wrapper returned normally. In the forced rollback the boundary ALWAYS ends in the

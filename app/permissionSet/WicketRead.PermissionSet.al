@@ -12,6 +12,10 @@ permissionset 94103 "Wicket - Read"
     //                         this is the safety net for a company created outside the hook)
     //   Operation Log .... I  the per-request audit row (Logger.Write, best-effort)
     //   Idempotency Log .. I  the replay snapshot for an idempotent request
+    //   Change Entry ..... ri the change history of its own writes, actions and procedures, and the
+    //   Field Change ..... ri caller's own entries through the changes operation. Indirect only: the
+    //                         tables hold every principal's values, so a Read user never opens them
+    //                         in the client (Wicket - Audit Changes reads them directly).
     //   Request Queue .... IM enqueue its own async request; the worker (running as the caller)
     //                         advances the row; cancel sets the cooperative flag. Never D.
     // Reads on Exposure / Field Exposure / the catalogs are what the deny-by-default gates consult;
@@ -39,5 +43,9 @@ permissionset 94103 "Wicket - Read"
         tabledata "Bcmag Idempotency Log" = RI,
         tabledata "Bcmag Idempotency Reservation" = RIM,   // take (I), settle/take over (M); never delete
         tabledata "Bcmag Request Queue" = RIM,
+        // The change history: written (I) by the recorder for the caller's own writes, actions and
+        // procedures; read (R) by the changes operation, which returns a caller's own entries only.
+        tabledata "Bcmag Change Entry" = ri,
+        tabledata "Bcmag Field Change" = ri,
         tabledata "Tenant Media" = R;
 }

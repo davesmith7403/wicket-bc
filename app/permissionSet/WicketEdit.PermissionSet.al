@@ -16,6 +16,9 @@ permissionset 94105 "Wicket - Edit"
         codeunit "Bcmag Op Insert" = X,
         codeunit "Bcmag Op Modify" = X,
         codeunit "Bcmag Op Delete" = X,
+        codeunit "Bcmag Op Batch" = X,        // many writes in one transaction — the same handlers
+        codeunit "Bcmag Batch Rollback" = X,
+        codeunit "Bcmag Batch Context" = X,
         codeunit "Bcmag Value Coercer" = X,   // typed coercion of caller values — write path only
         codeunit "Bcmag Record Access" = X;   // token -> record re-fetch + etag check — modify/delete only
 }

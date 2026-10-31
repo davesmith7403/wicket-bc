@@ -35,6 +35,34 @@ codeunit 94128 "Bcmag Upgrade"
         if BackfillSetup(Setup) then
             Setup.Modify();
         EnableRequestDetailsOnce(Setup);
+        EnableChangeHistoryOnce(Setup);
+    end;
+
+    // The change history fields arrive on an existing singleton as Off / 0 / 0 / false. The owner's
+    // decision is on by default, upgrades included — so set the defaults exactly once per company; an
+    // administrator's later choice is never overridden.
+    procedure EnableChangeHistoryOnce(var Setup: Record "Bcmag Setup")
+    var
+        UpgradeTag: Codeunit "Upgrade Tag";
+    begin
+        if UpgradeTag.HasUpgradeTag(ChangeHistoryTag()) then
+            exit;
+        ApplyChangeHistoryDefaults(Setup);
+        Setup.Modify();
+        UpgradeTag.SetUpgradeTag(ChangeHistoryTag());
+    end;
+
+    procedure ApplyChangeHistoryDefaults(var Setup: Record "Bcmag Setup")
+    begin
+        Setup."Record Changes" := Setup."Record Changes"::OldAndNewValues;
+        Setup."Change Retention Days" := 90;
+        Setup."Max Value Length" := 250;
+        Setup."Agent Can Read Changes" := true;
+    end;
+
+    procedure ChangeHistoryTag(): Code[250]
+    begin
+        exit('WICKET-CHANGE-HISTORY-20261029');
     end;
 
     // "Log Request Details" arrives in an upgrade as false on an existing singleton (InitValue applies
@@ -111,6 +139,7 @@ codeunit 94128 "Bcmag Upgrade"
     begin
         PerCompanyUpgradeTags.Add(QueueDestinationTag());
         PerCompanyUpgradeTags.Add(RequestDetailsTag());
+        PerCompanyUpgradeTags.Add(ChangeHistoryTag());
     end;
 
     local procedure BackfillSetup(var Setup: Record "Bcmag Setup") Changed: Boolean

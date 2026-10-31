@@ -21,6 +21,10 @@ codeunit 94120 "Bcmag Install"
         // A fresh singleton is born with Log Request Details on: the one-time upgrade switch is done.
         if not UpgradeTag.HasUpgradeTag(Upgrade.RequestDetailsTag()) then
             UpgradeTag.SetUpgradeTag(Upgrade.RequestDetailsTag());
+        // A fresh singleton is born with the change history defaults: a later upgrade must never reset
+        // the administrator's Change History settings to them.
+        if not UpgradeTag.HasUpgradeTag(Upgrade.ChangeHistoryTag()) then
+            UpgradeTag.SetUpgradeTag(Upgrade.ChangeHistoryTag());
     end;
 
     local procedure EnsureSetup()

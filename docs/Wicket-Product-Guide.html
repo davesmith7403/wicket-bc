@@ -342,13 +342,13 @@ td:first-child { color: var(--ink); }
   <nav class="toc" id="toc" aria-label="Contents">
     <div class="toc-head"><span>Contents</span></div>
     <ol class="toc-list"><li class="toc-part"><a href="#part-i--understanding-wicket">Part I — Understanding Wicket</a>
-      <ol><li><a href="#1-what-it-is">1. What it is</a></li><li><a href="#2-how-a-request-flows">2. How a request flows</a></li><li><a href="#3-the-sixteen-operations">3. The sixteen operations</a></li><li><a href="#4-security-model-in-one-page">4. Security model in one page</a></li></ol></li>
+      <ol><li><a href="#1-what-it-is">1. What it is</a></li><li><a href="#2-how-a-request-flows">2. How a request flows</a></li><li><a href="#3-the-eighteen-operations">3. The eighteen operations</a></li><li><a href="#4-security-model-in-one-page">4. Security model in one page</a></li></ol></li>
 <li class="toc-part"><a href="#part-ii--installation-and-setup">Part II — Installation and setup</a>
       <ol><li><a href="#5-prerequisites">5. Prerequisites</a></li><li><a href="#6-installing-the-extensions">6. Installing the extensions</a></li><li><a href="#7-registering-the-caller">7. Registering the caller</a></li><li><a href="#8-assigning-permission-sets">8. Assigning permission sets</a></li><li><a href="#9-the-wicket-setup-card">9. The Wicket Setup card</a></li><li><a href="#10-exposing-tables-and-codeunits">10. Exposing tables and codeunits</a></li><li><a href="#11-field-level-policy">11. Field-level policy</a></li><li><a href="#12-enrolling-procedures-and-actions">12. Enrolling procedures and actions</a></li><li><a href="#13-async-delivery-setup">13. Async delivery setup</a></li><li><a href="#14-serving-the-usage-guide">14. Serving the usage guide</a></li><li><a href="#15-operating-wicket">15. Operating Wicket</a></li></ol></li>
 <li class="toc-part"><a href="#part-iii--first-steps">Part III — First steps</a>
       <ol><li><a href="#16-your-first-six-calls">16. Your first six calls</a></li><li><a href="#17-reading-a-response">17. Reading a response</a></li></ol></li>
 <li class="toc-part"><a href="#part-iv--using-the-api">Part IV — Using the API</a>
-      <ol><li><a href="#18-envelope-and-transport">18. Envelope and transport</a></li><li><a href="#19-discover-and-describe">19. discover and describe</a></li><li><a href="#20-query">20. query</a></li><li><a href="#21-readblob">21. readBlob</a></li><li><a href="#22-insert-modify-delete">22. insert, modify, delete</a></li><li><a href="#23-invoke-and-action">23. invoke and action</a></li><li><a href="#24-async-delivery">24. Async delivery</a></li><li><a href="#25-capabilities-skill-pageurl-whoami">25. capabilities, skill, pageUrl, whoAmI</a></li><li><a href="#26-error-reference">26. Error reference</a></li><li><a href="#27-limits-and-non-goals">27. Limits and non-goals</a></li></ol></li>
+      <ol><li><a href="#18-envelope-and-transport">18. Envelope and transport</a></li><li><a href="#19-discover-and-describe">19. discover and describe</a></li><li><a href="#20-query">20. query</a></li><li><a href="#21-readblob">21. readBlob</a></li><li><a href="#22-insert-modify-delete-batch">22. insert, modify, delete, batch</a></li><li><a href="#23-invoke-and-action">23. invoke and action</a></li><li><a href="#24-async-delivery">24. Async delivery</a></li><li><a href="#25-capabilities-skill-pageurl-whoami-changes">25. capabilities, skill, pageUrl, whoAmI, changes</a></li><li><a href="#26-error-reference">26. Error reference</a></li><li><a href="#27-limits-and-non-goals">27. Limits and non-goals</a></li></ol></li>
 <li class="toc-part"><a href="#part-v--configuration-examples">Part V — Configuration examples</a>
       <ol><li><a href="#28-read-only-reporting-agent">28. Read-only reporting agent</a></li><li><a href="#29-data-entry-agent-that-creates-sales-orders">29. Data-entry agent that creates sales orders</a></li><li><a href="#30-posting-agent-through-the-actions-companion">30. Posting agent through the Actions companion</a></li><li><a href="#31-nightly-export-to-azure-blob-storage">31. Nightly export to Azure Blob Storage</a></li><li><a href="#32-consultant-working-across-several-customers-with-the-mcp-server">32. Consultant working across several customers with the MCP server</a></li><li><a href="#33-locked-down-production">33. Locked-down production</a></li></ol></li>
 <li class="toc-part"><a href="#part-vi--the-mcp-server">Part VI — The MCP server</a>
@@ -381,10 +381,10 @@ td:first-child { color: var(--ink); }
     <article class="body"><hr class="part-break">
 <h1 class="part" id="part-i--understanding-wicket">Part I — Understanding Wicket</h1>
 <h2 id="1-what-it-is">1. What it is</h2>
-<p>Business Central ships a REST API with one page per entity. That model works for a fixed integration, but an LLM agent does not know in advance which of the several thousand tables it will need, and nobody can publish an API page for each of them. Wicket replaces the per-entity surface with <strong>one API page and sixteen generic operations</strong>. A caller addresses any table by its number and any enrolled business procedure by codeunit and name. The schema is discoverable through the protocol itself, so an agent can work against a tenant it has never seen: it asks what exists, asks what a table looks like, then reads or writes.</p>
+<p>Business Central ships a REST API with one page per entity. That model works for a fixed integration, but an LLM agent does not know in advance which of the several thousand tables it will need, and nobody can publish an API page for each of them. Wicket replaces the per-entity surface with <strong>one API page and eighteen generic operations</strong>. A caller addresses any table by its number and any enrolled business procedure by codeunit and name. The schema is discoverable through the protocol itself, so an agent can work against a tenant it has never seen: it asks what exists, asks what a table looks like, then reads or writes.</p>
 <p>The whole product is three parts:</p>
 <ul>
-<li><strong>Wicket</strong>, the core Business Central extension. One API page, sixteen bound actions, the deny-by-default security model, the audit log, telemetry, async export to Azure Blob Storage. It depends on Microsoft&#39;s System Application only, so it installs on any Business Central 26 SaaS environment without touching the Base Application.</li>
+<li><strong>Wicket</strong>, the core Business Central extension. One API page, eighteen bound actions, the deny-by-default security model, the audit log, the change history, telemetry, async export to Azure Blob Storage. It depends on Microsoft&#39;s System Application only, so it installs on any Business Central 26 SaaS environment without touching the Base Application.</li>
 <li><strong>Wicket Actions - Base</strong>, an optional companion extension. It supplies the strongly typed business actions a System-Application-only core cannot own: posting sales and purchase documents, posting general and item journal batches. It runs entirely through Wicket&#39;s invoke plane and installs with every action switched off.</li>
 <li><strong>wicket-mcp</strong>, a Model Context Protocol server (TypeScript, shipped as a self-contained program for Windows and Apple-silicon Macs). It fronts Wicket over stdio so Claude Desktop, Claude Code and any other MCP host see the operations as native tools, handles OAuth for one or many environments, and ships the protocol guide as a tool of its own. Agents without MCP can call the endpoint directly with any HTTP client.</li>
 </ul>
@@ -514,7 +514,7 @@ codeunit &quot;Bcmag Op Runner&quot;           gates (Read-Only Mode, then the r
 <td>The next <code>query</code> page via <code>data.cursor</code></td>
 </tr>
 </tbody></table></div>
-<h2 id="3-the-sixteen-operations">3. The sixteen operations</h2>
+<h2 id="3-the-eighteen-operations">3. The eighteen operations</h2>
 <div class="table-wrap"><table><thead><tr>
 <th>Plane</th>
 <th>Operation</th>
@@ -576,6 +576,11 @@ codeunit &quot;Bcmag Op Runner&quot;           gates (Read-Only Mode, then the r
 <td>List the caller&#39;s own async requests.</td>
 </tr>
 <tr>
+<td>Read</td>
+<td><code>changes</code></td>
+<td>What the agent created, changed or deleted, and the actions and procedures it ran, with old and new values per field (chapter 15).</td>
+</tr>
+<tr>
 <td>Execute</td>
 <td><code>invoke</code></td>
 <td>Run an enrolled wrapper codeunit by id and procedure name.</td>
@@ -599,6 +604,11 @@ codeunit &quot;Bcmag Op Runner&quot;           gates (Read-Only Mode, then the r
 <td>Write</td>
 <td><code>delete</code></td>
 <td>Delete one record with optimistic concurrency.</td>
+</tr>
+<tr>
+<td>Write</td>
+<td><code>batch</code></td>
+<td>Insert, modify and delete many records in one call and one transaction: all or nothing, with a preview (chapter 22).</td>
 </tr>
 </tbody></table></div>
 <p>The planes are not just documentation: the shipped permission sets grant Execute on exactly the handlers of one plane, so a principal holding <code>Wicket - Read</code> cannot run an Execute or Write operation at all (see chapter 8).</p>
@@ -646,7 +656,7 @@ codeunit &quot;Bcmag Op Runner&quot;           gates (Read-Only Mode, then the r
 </tr>
 </tbody></table></div>
 <h2 id="6-installing-the-extensions">6. Installing the extensions</h2>
-<p><strong>The short path:</strong> the <a href="quick-start.html">quick start</a> puts this chapter, chapter 9&#39;s Simple Read-Only preset and the MCP install (chapter 34) on one page, for a first read-only connection to a sandbox.</p>
+<p><strong>The short path:</strong> the <a href="https://davesmith7403.github.io/wicket-bc/quick-start.html">quick start</a> puts this chapter, chapter 9&#39;s Simple Read-Only preset and the MCP install (chapter 34) on one page, for a first read-only connection to a sandbox.</p>
 <h3 id="from-a-compiled-package">From a compiled package</h3>
 <p>Download <code>Wicket_&lt;version&gt;.zip</code> (and, if you need posting actions, <code>Wicket_Actions_Base_&lt;version&gt;.zip</code>) from the repository&#39;s <a href="https://github.com/davesmith7403/wicket-bc/releases">Releases</a> page and unzip them; GitHub does not accept <code>.app</code> attachments, so each package ships zipped, with <code>SHA256SUMS.txt</code> to check them. Upload the core app in the Business Central admin center (<strong>Manage Apps → Install Extension</strong>) or through <strong>Extension Management → Upload Extension</strong>, and install it. Install the companion afterwards; it depends on the core app by id. The test app (<code>Wicket Tests</code>) is for development pipelines only and must not be installed in production.</p>
 <h3 id="from-source">From source</h3>
@@ -724,12 +734,17 @@ Authorization: Bearer &lt;token&gt;
 <tr>
 <td><code>Wicket - Edit</code></td>
 <td>A full read/write agent</td>
-<td>Everything in Execute plus <code>insert</code>, <code>modify</code>, <code>delete</code>.</td>
+<td>Everything in Execute plus <code>insert</code>, <code>modify</code>, <code>delete</code>, <code>batch</code>.</td>
 </tr>
 <tr>
 <td><code>Wicket - Audit</code></td>
 <td>Support, security review</td>
-<td>Opens every Wicket admin page and reads every Wicket table, including the logs and the request queue. Cannot change anything, purge logs or enter credentials.</td>
+<td>Opens every Wicket admin page and reads every Wicket table, including the logs, the request queue and the change history (it includes <code>Wicket - Audit Changes</code>). Cannot change anything, purge logs or enter credentials.</td>
+</tr>
+<tr>
+<td><code>Wicket - Audit Changes</code></td>
+<td>The customer&#39;s administrator, who reviews what the agent changed</td>
+<td>Opens <strong>Wicket Changes</strong> and reads every user&#39;s entries; through the <code>changes</code> operation, a caller holding it sees every user&#39;s changes and may filter by <code>user</code>. Included by <code>Wicket - Audit</code> and so by <code>Wicket - Admin</code>. Role ID <code>WICKET - CHANGES</code>.</td>
 </tr>
 <tr>
 <td><code>Wicket - Admin</code></td>
@@ -975,6 +990,33 @@ Authorization: Bearer &lt;token&gt;
 <td>Describe Restricted Fields</td>
 <td>off</td>
 <td>When on, <code>describe</code> lists hidden fields with <code>readable: false</code> instead of omitting them. Masked fields are always listed (with <code>access: &quot;masked&quot;</code>).</td>
+</tr>
+</tbody></table></div>
+<h3 id="change-history">Change History</h3>
+<div class="table-wrap"><table><thead><tr>
+<th>Field</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead><tbody><tr>
+<td>Record Changes</td>
+<td>Old and New Values (fresh install and upgrade)</td>
+<td><code>Off</code>: no change history. <code>Fields Only</code>: which fields changed, never their values. <code>Old and New Values</code>: each changed field&#39;s old and new value, as the field policy shows the field (a masked field keeps its mask, a hidden one only that it changed). A change applies from that moment; switching to a lower level does not rewrite what was recorded.</td>
+</tr>
+<tr>
+<td>Change Retention Days</td>
+<td>90</td>
+<td>Entries older than this are deleted by the maintenance task (the reaper), on its own schedule, independent of the Operation Log retention. 1 to 3650.</td>
+</tr>
+<tr>
+<td>Max Value Length</td>
+<td>250</td>
+<td>Longer values are cut, and the line is marked Truncated. 20 to 2048.</td>
+</tr>
+<tr>
+<td>Agent Can Read Changes</td>
+<td>on</td>
+<td>Whether the agent may read the history through the <code>changes</code> operation (<code>wicket_changes</code>). Off keeps it for people only, on the <strong>Wicket Changes</strong> page.</td>
 </tr>
 </tbody></table></div>
 <h3 id="api-routing">API Routing</h3>
@@ -1708,6 +1750,16 @@ Authorization: Bearer &lt;token&gt;
 <td>Event <code>WICKET-0001</code> per call with dimensions <code>operation</code>, <code>status</code>, <code>origin</code>, <code>cost</code>, <code>durationMs</code>, <code>problemType</code>; verbosity Normal below 400, Warning for 4xx, Error for 5xx. <code>WICKET-0002</code>: blob cleanup for a request gave up after the maximum number of delete attempts (12). <code>WICKET-0003</code>: one per finished async request (<code>requestId</code>, <code>status</code>, <code>packageFormat</code>, <code>resultRowCount</code>, <code>resultBytes</code>, <code>attemptCount</code>, <code>problemType</code>, <code>durationMs</code>; Warning when failed; never the query, URL or error text). <code>WICKET-0004</code>: the queue retention purge failed. <code>WICKET-0005</code>: the operation log retention purge failed.</td>
 </tr>
 <tr>
+<td>See what the agent changed</td>
+<td><strong>Wicket Changes</strong> page (from the Setup card or the Operation Log)</td>
+<td>One row per record the agent created, changed or deleted through Wicket, and per action or procedure it ran, with When, What, Table, Record, Fields, User and Connection; the part below lists each changed field, old → new. Values are stored as the field policy showed the field at its baseline (never as an unmask grant showed it) and checked again against today&#39;s policy when shown, so a field that has since become masked or hidden is shown that way; a stored mask is never shown in clear. Actions: the Operation Log entry, Business Central&#39;s <strong>Change Log</strong> for the record (knock-on changes in other records, such as the entries a posting creates, are there, not here), open the record, delete the filtered entries. Writes that fail or roll back leave no entry; an action or procedure that failed after it may have committed is listed as <em>Failed - may have changed data</em>. Requires <code>Wicket - Audit Changes</code>.</td>
+</tr>
+<tr>
+<td>Change history retention</td>
+<td>Automatic (the reaper)</td>
+<td>Deletes entries older than <strong>Change Retention Days</strong>.</td>
+</tr>
+<tr>
 <td>Grant read-only visibility</td>
 <td><code>Wicket - Audit</code></td>
 <td>Every admin page, no changes.</td>
@@ -1732,11 +1784,11 @@ Authorization: Bearer &lt;token&gt;
 Authorization: Bearer &lt;token&gt;
 Content-Type: application/json
 </code></pre>
-<p><code>wicketEndpoint(0)</code> is literal; <code>Microsoft.NAV.</code> is the mandatory action namespace. <strong>Each envelope shown below is sent serialised, as the string value of the body&#39;s single <code>envelope</code> member</strong> (<code>{&quot;envelope&quot;: &quot;{\&quot;id\&quot;:\&quot;first-1\&quot;,…}&quot;}</code>), and the answer&#39;s <code>value</code> is a string you parse once (chapter 18). The repository file <code>docs/smoke-test.http</code> contains all sixteen requests ready for the VS Code REST Client.</p>
+<p><code>wicketEndpoint(0)</code> is literal; <code>Microsoft.NAV.</code> is the mandatory action namespace. <strong>Each envelope shown below is sent serialised, as the string value of the body&#39;s single <code>envelope</code> member</strong> (<code>{&quot;envelope&quot;: &quot;{\&quot;id\&quot;:\&quot;first-1\&quot;,…}&quot;}</code>), and the answer&#39;s <code>value</code> is a string you parse once (chapter 18). The repository file <code>docs/smoke-test.http</code> contains all eighteen requests ready for the VS Code REST Client.</p>
 <h3 id="1-capabilities--does-the-endpoint-answer-and-what-does-it-allow">1. capabilities — does the endpoint answer, and what does it allow?</h3>
 <pre data-lang="json"><code class="language-json">{ &quot;id&quot;: &quot;first-1&quot;, &quot;issuedAt&quot;: &quot;2026-09-04T09:00:00Z&quot;, &quot;origin&quot;: &quot;first-steps&quot;, &quot;data&quot;: {} }
 </code></pre>
-<p>Expect <code>response.value.product = &quot;Wicket&quot;</code>, <code>transport.httpStatus = &quot;always-200&quot;</code>, sixteen entries in <code>operations</code>, and the live <code>limits</code>, <code>readOnly</code>, <code>fieldPolicy</code>, <code>async</code> and <code>actions</code>.</p>
+<p>Expect <code>response.value.product = &quot;Wicket&quot;</code>, <code>transport.httpStatus = &quot;always-200&quot;</code>, eighteen entries in <code>operations</code>, and the live <code>limits</code>, <code>readOnly</code>, <code>fieldPolicy</code>, <code>async</code> and <code>actions</code>.</p>
 <h3 id="2-whoami--which-principal-and-company-did-the-token-resolve-to">2. whoAmI — which principal and company did the token resolve to?</h3>
 <pre data-lang="json"><code class="language-json">{ &quot;id&quot;: &quot;first-2&quot;, &quot;issuedAt&quot;: &quot;2026-09-04T09:00:00Z&quot;, &quot;origin&quot;: &quot;first-steps&quot;, &quot;data&quot;: {} }
 </code></pre>
@@ -2073,7 +2125,7 @@ Content-Type: application/json
 </code></pre>
 <p>Returns <code>{ contentType, bytesBase64 }</code>. The content type is the stored MIME type or one sniffed from the bytes (PNG, JPEG, GIF, PDF, ZIP, SVG), else <code>application/octet-stream</code>. Take the field number from <code>describe</code> (<code>binary: true</code>).</p>
 <p>The field policy is checked first, before the record is looked up, and problems name the field by number only. A hidden field and a field number that does not exist both answer <code>403 field-restricted</code>, so a probe cannot tell hidden from absent; a binary field the caller may read only masked answers <code>403 field-masked</code>; a readable non-binary field is <code>400 not-binary</code>. An empty field returns <code>404 empty-blob</code>, a MediaSet field <code>422 mediaset-unsupported</code>, and a binary larger than 10 MB <code>413 blob-too-large</code> (the bytes travel base64-encoded inside one JSON response).</p>
-<h2 id="22-insert-modify-delete">22. insert, modify, delete</h2>
+<h2 id="22-insert-modify-delete-batch">22. insert, modify, delete, batch</h2>
 <h3 id="insert">insert</h3>
 <pre data-lang="json"><code class="language-json">{ &quot;data&quot;: {
     &quot;tableId&quot;: 18,
@@ -2118,6 +2170,16 @@ Content-Type: application/json
 <pre data-lang="json"><code class="language-json">{ &quot;data&quot;: { &quot;tableId&quot;: 18, &quot;recordId&quot;: &quot;&lt;@recordId&gt;&quot;, &quot;etag&quot;: &quot;&lt;@etag&gt;&quot; } }
 </code></pre>
 <p>Same concurrency rules. Result: <code>{ deleted: true, recordId }</code>.</p>
+<h3 id="batch">batch</h3>
+<pre data-lang="json"><code class="language-json">{ &quot;data&quot;: { &quot;preview&quot;: true, &quot;items&quot;: [
+  { &quot;op&quot;: &quot;insert&quot;, &quot;tableId&quot;: 36, &quot;values&quot;: { &quot;Document Type&quot;: &quot;Order&quot;, &quot;Sell-to Customer No.&quot;: &quot;10000&quot; } },
+  { &quot;op&quot;: &quot;insert&quot;, &quot;tableId&quot;: 37, &quot;values&quot;: { &quot;Document Type&quot;: &quot;Order&quot;, &quot;Document No.&quot;: { &quot;fromItem&quot;: 0, &quot;field&quot;: &quot;No.&quot; },
+                                                &quot;Line No.&quot;: 10000, &quot;Type&quot;: &quot;Item&quot;, &quot;No.&quot;: &quot;1896-S&quot;, &quot;Quantity&quot;: 2 } },
+  { &quot;op&quot;: &quot;modify&quot;, &quot;tableId&quot;: 18, &quot;recordId&quot;: &quot;&lt;@recordId&gt;&quot;, &quot;etag&quot;: &quot;&lt;@etag&gt;&quot;, &quot;values&quot;: { &quot;Credit Limit (LCY)&quot;: 75000 } }
+] } }
+</code></pre>
+<p>Up to 100 items (<code>limits.maxBatchItems</code>), any tables, each in the shape of <code>insert</code>, <code>modify</code> or <code>delete</code> plus <code>op</code>. Every item runs through the same handler as a single write, so exposure, the field policy, validation, the etag check and the change history apply to each; the items run in one transaction, with explicit commits inside table triggers ignored, so <strong>all are written or none</strong>. The first failing item stops the batch: the problem is that item&#39;s own (<code>400</code>, <code>403</code>, <code>412</code>, <code>422</code> …) with the extension members <code>item</code> (its index) and <code>itemOp</code>, and a <code>detail</code> starting <code>items[1] (insert, table 37): </code>; nothing is written. <code>preview: true</code> runs every item inside a forced rollback and answers the per-item results (their recordIds and etags describe records that no longer exist) or the first failure; it is allowed in Read-Only Mode.</p>
+<p>A value <code>{ &quot;fromItem&quot;: n, &quot;field&quot;: &quot;&lt;name&gt;&quot; }</code> (or <code>&quot;fieldNo&quot;</code>) is that field of the record item n wrote, read after it ran — the header&#39;s number in the example above. <code>recordId: { &quot;fromItem&quot;: n }</code> targets the record item n created or changed. Only earlier items; a referenced field must be readable in clear (<code>403 field-restricted</code> / <code>field-masked</code> otherwise, so a hidden value is never copied into a visible field); a later item, a deleted record or an unknown field is <code>400 invalid-reference</code>. Result: <code>{ items: [ { index, op, recordId, @etag? | deleted } ], count, preview? }</code>; cost is the number of items. Requires <code>Wicket - Edit</code>. An idempotency key covers the whole batch; a replay re-checks every item&#39;s table.</p>
 <h3 id="making-writes-safe-to-retry">Making writes safe to retry</h3>
 <p>Put an <code>idempotencyKey</code> on every write your client might resend. The first execution stores its outcome; a resend with the same key and body replays it, so a network timeout after a successful insert cannot create a duplicate. A failed write rolls back completely, including side effects of table triggers, because the handler raises inside the <code>Codeunit.Run</code> boundary. A replay is not a bypass: it is checked against the policy in force at the moment of the resend, so a caller whose access was narrowed in between receives <code>403 replay-withheld</code>, which says the write <strong>did</strong> complete and must not be repeated under a new key (chapter 18).</p>
 <h2 id="23-invoke-and-action">23. invoke and action</h2>
@@ -2275,7 +2337,7 @@ Content-Type: application/json
 </code></pre>
 <p><code>status</code> returns <code>{ requestId, status, operation, packageFormat, createdAt, scheduledFor, startedAt, completedAt, expiresAt, progressRows, resultRowCount, resultBytes, packageUrl?, problem? }</code>. <code>packageUrl</code> appears once the request has <code>succeeded</code> and is composed on every call: under Service SAS it carries a freshly minted token (https only, valid from 15 minutes back until now + SAS TTL Minutes, never past <code>expiresAt</code>), so a <code>status</code> read hours after completion still yields a working link while the package lives. <code>requests</code> returns an array of the same projection, newest first. <code>cancel</code> finalises a scheduled or queued request (not yet started) at once, and asks a running one to stop at its next checkpoint; a worker that finishes its upload after the cancel honours it, and the package is deleted. A failed request&#39;s <code>problem.type</code> names the cause: <code>async-upload-failed</code> (the package could not be written to Azure, or the download configuration became unusable), <code>async-task-failed</code> (the scheduled task itself failed), <code>async-stale</code> (the worker session ended without finishing), <code>async-start-failed</code>, or the query&#39;s own problem.</p>
 <p>All three are strictly caller-scoped: another principal&#39;s request id is indistinguishable from a nonexistent one (<code>404 unknown-request</code>). Backpressure: more than Max Active Requests open requests return <code>429 too-many-requests</code>. An <code>idempotencyKey</code> on the submit replays to the same <code>requestId</code> instead of spawning a duplicate export.</p>
-<h2 id="25-capabilities-skill-pageurl-whoami">25. capabilities, skill, pageUrl, whoAmI</h2>
+<h2 id="25-capabilities-skill-pageurl-whoami-changes">25. capabilities, skill, pageUrl, whoAmI, changes</h2>
 <h3 id="capabilities">capabilities</h3>
 <p><code>{ &quot;data&quot;: {} }</code> returns <code>{ product, apiVersion, schemaVersion, urlTemplate, transport, envelope, operations, filterGrammar, limits, readOnly, structureVersion, strongEtag, exposureMode, fieldPolicy, skill, async, actions, paging }</code> (and <code>apiRouting</code>). <code>structureVersion</code> is a SHA-256 over the installed apps&#39; packages: it moves when an app is installed, upgraded or removed, which is when table structure can have changed, and not when Wicket&#39;s policy changes. A client&#39;s structural knowledge of the tenant (a schema cache, the MCP server&#39;s tenant map) should be re-verified when it moves. <code>exposureMode</code> is the invariant name (<code>Allowlisted</code> for Exposed tables only, or <code>Open</code>); <code>fieldPolicy</code> is <code>{ mode, classifications: [{ name, access, maskProfile }], maskProfiles, unmaskTierEnabled, principal: { unmaskGranted, activeExceptions }, describeRestrictedFields }</code>, so an agent learns what it will see masked and whether its own grants lift it; <code>paging</code> describes the keyset and offset modes. Call it once at startup and configure your client from it rather than hard-coding limits.</p>
 <h3 id="skill">skill</h3>
@@ -2291,6 +2353,12 @@ Content-Type: application/json
 <p><code>table</code> is a name or <code>#&lt;number&gt;</code>. Pass <code>systemId</code> or <code>recordId</code>; <code>systemId</code> wins when both are present. <code>pageId</code> overrides the table&#39;s default lookup page and is required when the table has none (<code>404 no-page</code>). Requires <code>Allow Read</code> on the table. The link opens under the viewer&#39;s own login and permissions.</p>
 <h3 id="whoami">whoAmI</h3>
 <p><code>{ &quot;data&quot;: {} }</code> returns <code>{ userSecurityId, userId, company, readOnly, fieldPolicy, unmaskGranted, activeExceptions, strongEtag, serverTime }</code>; <code>unmaskGranted</code> says whether the Unmask tier lifts masks for this caller right now and <code>activeExceptions</code> counts the caller&#39;s active per-user exceptions, which answers &quot;why do I see this value in clear?&quot; without admin access. Use it after minting a token or switching connections, and use <code>serverTime</code> as the watermark for incremental sync.</p>
+<h3 id="changes">changes</h3>
+<pre data-lang="json"><code class="language-json">{ &quot;data&quot;: {} }
+{ &quot;data&quot;: { &quot;from&quot;: &quot;2026-10-01T00:00:00Z&quot;, &quot;tableId&quot;: 18, &quot;kind&quot;: &quot;changed&quot;, &quot;top&quot;: 50 } }
+{ &quot;data&quot;: { &quot;user&quot;: &quot;ANNA&quot;, &quot;viaConnection&quot;: &quot;contoso-sandbox&quot;, &quot;cursor&quot;: &quot;&lt;@nextLink&gt;&quot; } }
+</code></pre>
+<p>Returns <code>{ value: [ { entryNo, createdAt, kind, tableId, tableName, recordKey, systemId?, user, connection, requestId, name?, outcome?, result?, fieldCount, fields: [ { fieldNo, fieldName, shownAs, old?, new?, truncated? } ] } ], @nextLink? }</code>, newest first; <code>kind</code> is <code>created</code>, <code>changed</code>, <code>deleted</code>, <code>action</code> or <code>procedure</code>, and <code>shownAs</code> is <code>clear</code>, <code>masked</code> or <code>hidden</code> (no values). A caller sees its own entries; one holding <code>Wicket - Audit Changes</code> sees everyone&#39;s and may filter by <code>user</code> (<code>403 changes-forbidden</code> otherwise). <code>top</code> defaults to 20, capped at 100; pass <code>@nextLink</code> back as <code>cursor</code> with the same filters. <code>403 changes-off</code> while Setup <strong>Record Changes</strong> is Off or <strong>Agent Can Read Changes</strong> is off.</p>
 <h2 id="26-error-reference">26. Error reference</h2>
 <div class="table-wrap"><table><thead><tr>
 <th>Slug · status</th>
@@ -2468,9 +2536,29 @@ Content-Type: application/json
 <td>Read first, send <code>data.etag</code>.</td>
 </tr>
 <tr>
+<td><code>batch-too-large</code> · 400</td>
+<td>A <code>batch</code> with more than 100 items</td>
+<td>Split it.</td>
+</tr>
+<tr>
+<td><code>invalid-reference</code> · 400</td>
+<td>A batch <code>fromItem</code> naming a later item, a deleted record or an unknown field</td>
+<td>Reference earlier items only; take the field name from <code>describe</code>.</td>
+</tr>
+<tr>
 <td><code>role-forbidden</code> · 403</td>
 <td>The principal&#39;s Wicket role is below the operation</td>
 <td>Do not retry; assign the permission set named in <code>detail</code>.</td>
+</tr>
+<tr>
+<td><code>changes-off</code> · 403</td>
+<td><code>changes</code> while the change history is off or not readable by the agent</td>
+<td>An administrator turns it on (Setup, Change History); the Wicket Changes page still shows what was recorded.</td>
+</tr>
+<tr>
+<td><code>changes-forbidden</code> · 403</td>
+<td><code>changes</code> with <code>user</code> without <code>Wicket - Audit Changes</code></td>
+<td>Omit <code>user</code> to see your own changes, or assign the set.</td>
 </tr>
 <tr>
 <td><code>idempotency-conflict</code> · 409</td>
@@ -2768,12 +2856,13 @@ Content-Type: application/json
 <hr class="part-break">
 <h1 class="part" id="part-vi--the-mcp-server">Part VI — The MCP server</h1>
 <h2 id="34-install-and-configure">34. Install and configure</h2>
-<p><strong>The short path:</strong> the <a href="quick-start.html">quick start</a> covers the plugin install and <code>/wicket:setup</code> together with the Business Central side, on one page.</p>
+<p><strong>The short path:</strong> the <a href="https://davesmith7403.github.io/wicket-bc/quick-start.html">quick start</a> covers the plugin install and <code>/wicket:setup</code> together with the Business Central side, on one page.</p>
 <p>The MCP server, the plugin and the usage skill live in their own repository, <a href="https://github.com/davesmith7403/wicket">davesmith7403/wicket</a>. In Claude Code, install the plugin:</p>
 <pre data-lang="text"><code class="language-text">/plugin marketplace add davesmith7403/wicket
 /plugin install wicket@wicket
 </code></pre>
 <p>Then run <strong><code>/wicket:setup</code></strong>. It asks how you sign in: in a browser window (recommended), with a device code, or as an app with a client secret. It works out the tenant from a pasted Business Central address or a work email, lists the environments and companies to pick from, then saves and tests the connection. No GUID is typed by hand, and no restart is needed. Without a client ID of your own, Wicket uses its default client, so no app registration is needed. A client secret never passes through the chat: setup opens a one-time page in your browser, and the secret goes from there into your computer&#39;s own secret store (the Keychain on a Mac, protected for your Windows account on Windows). The same command shows what is configured (<code>/wicket:setup view</code>), fixes a failing connection, changes the default and removes connections. The server starts even when nothing is configured, and every tool then answers <code>503 connection-unavailable</code> pointing to <code>/wicket:setup</code>.</p>
+<p>In the Claude desktop app, download <code>wicket-&lt;version&gt;.mcpb</code> from the plugin repository&#39;s <a href="https://github.com/davesmith7403/wicket/releases/latest">latest release</a> and open it: the app installs Wicket with one click, the same server and skill as the plugin. Then say <strong>&quot;set up Wicket&quot;</strong> in a chat; the same guided setup runs there, and connections are shared with Claude Code on the same machine. Pages Claude builds in the desktop app, such as a dashboard, can query Wicket live while they are open.</p>
 <p>To run the server standalone, or to configure connections by hand, clone that repository:</p>
 <pre data-lang="bash"><code class="language-bash">cd mcp
 bun install

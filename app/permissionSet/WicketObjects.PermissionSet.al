@@ -32,6 +32,9 @@ permissionset 94102 "Wicket - Objects"
         table "Bcmag Mask Profile" = X,
         table "Bcmag Access Exception" = X,
         table "Bcmag Unmask Gate" = X,
+        table "Bcmag Change Entry" = X,
+        table "Bcmag Field Change" = X,
+        table "Bcmag Changes Gate" = X,
         // The single HTTP surface
         page "Bcmag Rpc Endpoint" = X,
         // Dispatch + cross-cutting
@@ -43,6 +46,7 @@ permissionset 94102 "Wicket - Objects"
         codeunit "Bcmag Envelope" = X,
         codeunit "Bcmag Problem" = X,
         codeunit "Bcmag Logger" = X,
+        codeunit "Bcmag Change Recorder" = X,
         codeunit "Bcmag Idempotency Guard" = X,
         codeunit "Bcmag Json Read" = X,
         // Projection / filtering / policy (shared by the read plane)
@@ -84,6 +88,7 @@ permissionset 94102 "Wicket - Objects"
         codeunit "Bcmag Package Builder" = X,
         codeunit "Bcmag Op Status" = X,
         codeunit "Bcmag Op Requests" = X,
+        codeunit "Bcmag Op Changes" = X,
         // Lifecycle (run in system context; listed so the set describes the whole extension)
         codeunit "Bcmag Install" = X,
         codeunit "Bcmag Upgrade" = X;

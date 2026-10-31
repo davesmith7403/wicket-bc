@@ -60,11 +60,15 @@ table 94101 "Bcmag Exposure"
         //     already observable as not-exposed, so its rows reveal nothing new.)
         //   - Classification Rules and Mask Profiles stay readable: capabilities publishes both to
         //     every caller, so denying them would hide nothing.
+        //   - The change history (Change Entry, Field Change) names every principal's changes and holds
+        //     copies of their values; its gate table is listed with it. The page and the caller-scoped
+        //     changes operation are the ways to read it.
         // The role-gate sentinel tables (Write, Execute, Unmask) are empty by design and need no entry.
         if (ObjectType = ObjectType::Table) and (Op = 'read') and
            (ObjectId in [Database::"Bcmag Operation Log", Database::"Bcmag Idempotency Log",
                          Database::"Bcmag Idempotency Reservation", Database::"Bcmag Request Queue",
-                         Database::"Bcmag Access Exception", Database::"Bcmag Field Exposure"])
+                         Database::"Bcmag Access Exception", Database::"Bcmag Field Exposure",
+                         Database::"Bcmag Change Entry", Database::"Bcmag Field Change", Database::"Bcmag Changes Gate"])
         then
             exit(false);
 

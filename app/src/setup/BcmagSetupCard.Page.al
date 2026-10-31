@@ -69,6 +69,15 @@ page 94101 "Bcmag Setup Card"
                 field(LogRetentionDays;        Rec."Operation Log Retention Days"){ ApplicationArea = All; }
                 field(LogRequestDetails;       Rec."Log Request Details") { ApplicationArea = All; ToolTip = 'Record each request''s select, filter, orderBy, top, change window and aggregate, and the field names a write set (never their values), in the Operation Log''s Request Details. A filter can contain a value the caller searched for, such as a name; turn this off if that must not be stored. The table and target are always recorded.'; }
             }
+            group(ChangeHistory)
+            {
+                Caption = 'Change History';
+
+                field(RecordChanges;           Rec."Record Changes")      { ApplicationArea = All; ToolTip = 'What Wicket keeps about the records the agent creates, changes or deletes, and the actions and procedures it runs. Off: nothing. Fields Only: which fields changed, never their values. Old and New Values: both, as the field policy shows each field (masked stays masked; hidden shows only that it changed). See Wicket Changes.'; }
+                field(ChangeRetentionDays;     Rec."Change Retention Days"){ ApplicationArea = All; ToolTip = 'How many days the change history is kept; older entries are removed by Wicket''s maintenance task.'; }
+                field(MaxValueLength;          Rec."Max Value Length")    { ApplicationArea = All; ToolTip = 'Longer old or new values are cut to this many characters and marked as cut.'; }
+                field(AgentCanReadChanges;     Rec."Agent Can Read Changes"){ ApplicationArea = All; ToolTip = 'Let Wicket clients read the change history (the changes operation): each caller sees its own changes, and only holders of Wicket - Audit Changes see everyone''s. Off keeps it for people in Business Central only.'; }
+            }
             group(FieldPolicy)
             {
                 field(FieldPolicyMode; Rec."Field Policy Mode")
@@ -124,6 +133,14 @@ page 94101 "Bcmag Setup Card"
         }
         area(navigation)
         {
+            action(WicketChanges)
+            {
+                ApplicationArea = All;
+                Caption = 'Wicket Changes';
+                Image = ChangeLog;
+                RunObject = page "Bcmag Changes";
+                ToolTip = 'See what the agent created, changed or deleted through Wicket, with the old and new value of each field, and the actions and procedures it ran.';
+            }
             action(ClassificationRules)
             {
                 ApplicationArea = All;

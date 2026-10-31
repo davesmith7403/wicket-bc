@@ -17,6 +17,8 @@ codeunit 94125 "Bcmag Op Runner"
         OpStatus: Codeunit "Bcmag Op Status";
         OpCancel: Codeunit "Bcmag Async Cancel";
         OpRequests: Codeunit "Bcmag Op Requests";
+        OpChanges: Codeunit "Bcmag Op Changes";
+        OpBatch: Codeunit "Bcmag Op Batch";
         OpAction: Codeunit "Bcmag Op Action";
         OpSkill: Codeunit "Bcmag Op Skill";
         OpPageUrl: Codeunit "Bcmag Op Page Url";
@@ -86,6 +88,10 @@ codeunit 94125 "Bcmag Op Runner"
                 exit(OpCancel.Run(Data, Response, Fail, Cost));
             'requests':
                 exit(OpRequests.Run(Data, Response, Fail, Cost));
+            'changes':
+                exit(OpChanges.Run(Data, Response, Fail, Cost));
+            'batch':
+                exit(OpBatch.Run(Data, Response, Fail, Cost));
             'action':
                 exit(OpAction.Run(Data, Response, Fail, Cost));
             'skill':
@@ -112,10 +118,12 @@ codeunit 94125 "Bcmag Op Runner"
         Ops.Add('insert');
         Ops.Add('modify');
         Ops.Add('delete');
+        Ops.Add('batch');
         Ops.Add('invoke');
         Ops.Add('status');
         Ops.Add('cancel');
         Ops.Add('requests');
+        Ops.Add('changes');
         Ops.Add('action');
         Ops.Add('skill');
         Ops.Add('pageUrl');

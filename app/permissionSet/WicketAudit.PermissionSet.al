@@ -11,7 +11,7 @@ permissionset 94106 "Wicket - Audit"
     // data-plane roles do not get these pages.
     Assignable = true;
     Caption = 'Wicket - Audit';
-    IncludedPermissionSets = "Wicket - Objects";
+    IncludedPermissionSets = "Wicket - Objects", "Wicket - Changes";
     Permissions =
         tabledata "Bcmag Setup" = R,
         tabledata "Bcmag Exposure" = R,

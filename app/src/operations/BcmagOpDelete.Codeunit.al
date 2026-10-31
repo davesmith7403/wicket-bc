@@ -3,11 +3,13 @@ codeunit 94117 "Bcmag Op Delete"
     var
         Exposure: Record "Bcmag Exposure";
         Problem: Codeunit "Bcmag Problem";
+        Recorder: Codeunit "Bcmag Change Recorder";
         RecordAccess: Codeunit "Bcmag Record Access";
         JsonRead: Codeunit "Bcmag Json Read";
 
     procedure Run(Data: JsonObject; var Response: JsonObject; var Fail: JsonObject; var Cost: Integer): Boolean
     var
+        Before: Dictionary of [Integer, Text];
         Tok: JsonToken;
         TableId: Integer;
         Token: Text;
@@ -35,11 +37,13 @@ codeunit 94117 "Bcmag Op Delete"
             RecRef.Close();
             exit(false);
         end;
+        Before := Recorder.Snapshot(RecRef);
         if not TryDelete(RecRef) then begin
             Fail := Problem.NewFailure(422, 'delete-failed', 'Delete failed', GetLastErrorText());
             RecRef.Close();
             exit(false);
         end;
+        Recorder.RecordDeleted(Before, RecRef);
 
         Result.Add('deleted', true);
         Result.Add('recordId', Token);

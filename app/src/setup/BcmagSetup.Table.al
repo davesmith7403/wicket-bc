@@ -109,6 +109,12 @@ table 94100 "Bcmag Setup"
         // Marker: true on every row created by this or a later build; false only on a singleton that
         // pre-dates fields 200-201, which is how the upgrade tells "upgraded" from "fresh".
         field(202; "Write Policy Defaults Set"; Boolean)  { Caption = 'Write Policy Defaults Set'; InitValue = true; }
+        // Change history (what the agent created, changed or deleted through Wicket). InitValues are the
+        // fresh-install defaults; Bcmag Upgrade sets the same values once on an upgraded singleton.
+        field(210; "Record Changes";          Enum "Bcmag Record Changes") { Caption = 'Record Changes'; InitValue = OldAndNewValues; }
+        field(211; "Change Retention Days";   Integer)   { Caption = 'Change Retention Days'; InitValue = 90; MinValue = 1; MaxValue = 3650; }
+        field(212; "Max Value Length";        Integer)   { Caption = 'Max Value Length'; InitValue = 250; MinValue = 20; MaxValue = 2048; }
+        field(213; "Agent Can Read Changes";  Boolean)   { Caption = 'Agent Can Read Changes'; InitValue = true; }
     }
 
     keys { key(PK; "Primary Key") { Clustered = true; } }

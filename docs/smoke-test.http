@@ -229,6 +229,18 @@ Content-Type: application/json
 {"envelope": "{\"id\": \"smoke-8\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"tableId\": 18, \"recordId\": \"<paste-the-recordId-from-insert>\", \"etag\": \"<paste-the-latest-@etag>\"}}"}
 
 ###
+# batch — several writes in one transaction (all or nothing); preview: true runs and rolls back
+# Items: { op: insert|modify|delete, tableId, recordId?, values?, etag?, validate?, init? }, at most 100.
+# A value { "fromItem": n, "field": "No." } is a field of the record an earlier item wrote.
+# Expected (preview): response.value = { items: [ { index, op, recordId, @etag } ], count: 2, preview: true };
+#           nothing is written. A failing item: a problem with "item" and a detail starting items[i].
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.batch
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-8b\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"preview\": true, \"items\": [{\"op\": \"insert\", \"tableId\": 18, \"values\": {\"No.\": \"SMOKE-B1\", \"Name\": \"Smoke Batch\"}}, {\"op\": \"insert\", \"tableId\": 222, \"values\": {\"Customer No.\": {\"fromItem\": 0, \"field\": \"No.\"}, \"Code\": \"MAIN\", \"Name\": {\"fromItem\": 0, \"field\": \"Name\"}}}]}}"}
+
+###
 # invoke — run an enrolled wrapper procedure (deny-by-default)
 # Prereq: enrol the sample in Wicket Procedure Catalog
 #           { Logical Codeunit Id = 94190, Procedure Name = "Ping", Wrapper Codeunit Id = 94190,
@@ -314,6 +326,25 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {"envelope": "{\"id\": \"smoke-12\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"top\": 20}}"}
+
+###
+# changes — what the agent created, changed or deleted, newest first, old → new per field
+# Optional: from/to (ISO date-times), tableId, viaConnection, kind (created/changed/deleted/action/
+#           procedure), user (needs Wicket - Audit Changes), top (default 20, cap 100), cursor.
+# Expected: response.value = an array of entries with fields[]; your own entries only unless the
+#           caller holds Wicket - Audit Changes; 403 changes-off while Setup Record Changes is Off.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "smoke-12b",
+#   "issuedAt": "2026-05-08T00:00:00Z",
+#   "origin": "smoke",
+#   "data": { "top": 20 }
+# }
+POST {{base}}/companies({{company}})/wicketEndpoint(0)/Microsoft.NAV.changes
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"smoke-12b\", \"issuedAt\": \"2026-05-08T00:00:00Z\", \"origin\": \"smoke\", \"data\": {\"top\": 20}}"}
 
 ###
 # action — run a named business action from the Action Catalog (deny-by-default)

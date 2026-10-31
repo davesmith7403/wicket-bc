@@ -32,4 +32,25 @@ page 94103 "Bcmag Operation Log List"
             }
         }
     }
+
+    actions
+    {
+        area(Navigation)
+        {
+            action(Changes)
+            {
+                ApplicationArea = All;
+                Caption = 'Changes for this Request';
+                Image = ChangeLog;
+                ToolTip = 'Open what this request created, changed or deleted in Wicket Changes.';
+                trigger OnAction()
+                var
+                    Entry: Record "Bcmag Change Entry";
+                begin
+                    Entry.SetRange("Request Id", Rec."Request Id");
+                    Page.Run(Page::"Bcmag Changes", Entry);
+                end;
+            }
+        }
+    }
 }

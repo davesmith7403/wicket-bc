@@ -3,6 +3,7 @@ codeunit 94116 "Bcmag Op Modify"
     var
         Exposure: Record "Bcmag Exposure";
         Problem: Codeunit "Bcmag Problem";
+        Recorder: Codeunit "Bcmag Change Recorder";
         Coercer: Codeunit "Bcmag Value Coercer";
         Codec: Codeunit "Bcmag Record Id Codec";
         Projector: Codeunit "Bcmag Projector";
@@ -12,6 +13,7 @@ codeunit 94116 "Bcmag Op Modify"
 
     procedure Run(Data: JsonObject; var Response: JsonObject; var Fail: JsonObject; var Cost: Integer): Boolean
     var
+        Before: Dictionary of [Integer, Text];
         Tok: JsonToken;
         TableId: Integer;
         Token: Text;
@@ -50,6 +52,7 @@ codeunit 94116 "Bcmag Op Modify"
             exit(false);
         end;
         KeyBefore := PrimaryKeyValues(RecRef);
+        Before := Recorder.Snapshot(RecRef);
         if not Coercer.ApplyValues(RecRef, Values, ByFieldNo, Validate, true, Fail) then begin
             RecRef.Close();
             exit(false);
@@ -71,6 +74,8 @@ codeunit 94116 "Bcmag Op Modify"
         // Re-read before minting the new @etag — same reason as the insert op: the token must come
         // from the persisted SystemModifiedAt, not the in-memory value Modify leaves behind.
         RecRef.Get(RecRef.RecordId);
+        // Same transaction as the change: if anything after this fails, the history rolls back with it.
+        Recorder.RecordChanged(Before, RecRef);
 
         Result.Add('recordId', Codec.Encode(RecRef.RecordId));
         if Projector.EtagOf(RecRef) <> '' then
