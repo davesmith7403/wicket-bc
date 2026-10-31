@@ -11,7 +11,7 @@
   "bcptTestFolders": [],
 
   "_comment_version": "Runtime 16.0 / BC 26 (see app.json platform/application 26.0.0.0). 'repoVersion' drives the build/version number AL-Go stamps into the apps; bump alongside app.json. RunOnWindows because BcContainerHelper/containers require Windows runners.",
-  "repoVersion": "1.3",
+  "repoVersion": "1.4",
   "runs-on": "windows-latest",
   "shell": "powershell",
   "githubRunner": "windows-latest",
