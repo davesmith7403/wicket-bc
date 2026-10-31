@@ -99,6 +99,11 @@ dd { margin: 2px 0 0; color: var(--ink-soft); }
 .ask.beyond .kind { color: var(--amber); }
 .ask p { margin: 0; flex: 1; }
 .ask button { align-self: flex-start; }
+.switch { display: inline-flex; gap: 4px; padding: 4px; margin: 0 0 18px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--rule); }
+.switch button { border: 0; background: transparent; color: var(--ink-soft); padding: 6px 12px; }
+.switch button[aria-selected="true"] { background: var(--surface); color: var(--accent-ink); box-shadow: var(--shadow); }
+.app-steps > h3.app-name { font: 600 1rem var(--font-display); margin: 0 0 10px; color: var(--accent-ink); }
+.js .app-steps > h3.app-name { display: none; }
 footer { margin-top: 36px; color: var(--muted); font-size: 0.9rem; }
 </style>
 </head>
@@ -106,7 +111,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 0.9rem; }
 <div class="wrap">
 <header>
   <h1>Wicket quick start</h1>
-  <p>Connect Claude to a customer's Business Central, from Windows or a Mac. Nothing to install besides Claude Code. The first connection goes to a sandbox and is read-only.</p>
+  <p>Connect Claude to a customer's Business Central, from Windows or a Mac. Nothing to install besides Claude: Claude Code or the Claude desktop app. The first connection goes to a sandbox and is read-only.</p>
 </header>
 
 <div class="lanes">
@@ -144,8 +149,14 @@ footer { margin-top: 36px; color: var(--muted); font-size: 0.9rem; }
   </section>
 
   <section class="lane" aria-labelledby="you">
-    <h2 id="you">You, in Claude Code</h2>
-    <p class="who">On Windows or an Apple-silicon Mac.</p>
+    <h2 id="you">You, in Claude</h2>
+    <p class="who">On Windows or an Apple-silicon Mac, in Claude Code or the Claude desktop app. Both share one setup: install both if you like.</p>
+    <div class="switch" role="tablist" aria-label="Which Claude app" hidden>
+      <button type="button" role="tab" id="tab-code" aria-controls="steps-code" aria-selected="true">Claude Code</button>
+      <button type="button" role="tab" id="tab-desktop" aria-controls="steps-desktop" aria-selected="false">Claude desktop app</button>
+    </div>
+    <div class="app-steps" id="steps-code" role="tabpanel" aria-labelledby="tab-code">
+    <h3 class="app-name">Claude Code</h3>
     <ol class="steps">
       <li>
         <h3>Install the plugin</h3>
@@ -165,12 +176,33 @@ footer { margin-top: 36px; color: var(--muted); font-size: 0.9rem; }
         <p>Then ask in plain words. <a href="#ask">What to ask</a> below has examples to start from.</p>
       </li>
     </ol>
+    </div>
+    <div class="app-steps" id="steps-desktop" role="tabpanel" aria-labelledby="tab-desktop">
+    <h3 class="app-name">Claude desktop app</h3>
+    <ol class="steps">
+      <li>
+        <h3>Install the extension</h3>
+        <p>Download <code class="inline">wicket-&lt;version&gt;.mcpb</code> from the <a href="https://github.com/davesmith7403/wicket/releases/latest">plugin's latest release</a> and open it: the desktop app shows Wicket and installs it with one click.</p>
+        <p class="note">On its first start Wicket downloads its server for your computer, once.</p>
+      </li>
+      <li>
+        <h3>Connect</h3>
+        <div class="cmd"><code>Set up Wicket</code><button type="button" data-copy="Set up Wicket">Copy</button></div>
+        <p>Say it in a new chat. Choose browser sign-in and paste the sandbox's address from your browser's address bar. Sign in with your own work account and pick the company. No GUIDs to look up.</p>
+      </li>
+      <li>
+        <h3>Ask</h3>
+        <p>Ask in plain words; Claude finds its bearings in Business Central on the first question. <a href="#ask">What to ask</a> below has examples to start from.</p>
+        <p class="note">Dashboards and reports stay live here: while you have one open, it reads Business Central again.</p>
+      </li>
+    </ol>
+    </div>
   </section>
 </div>
 
 <section class="asks" aria-labelledby="ask">
   <h2 id="ask">What to ask</h2>
-  <p class="lead">Ask for the result you want, and Claude picks the form: an answer, a list, a file, a dashboard, a report or a link. Tried on Business Central's standard demo data.</p>
+  <p class="lead">Ask for the result you want, and Claude picks the form: an answer, a list, a file, a dashboard, a report or a link. Tried on Business Central's standard demo data. Claude Code saves a file to a folder on your computer; the desktop app gives it to you as a download.</p>
   <div class="ask-grid">
     <div class="ask"><span class="kind">A quick answer</span><p>How many sales orders are open, and what are they worth in total?</p><button type="button" data-copy="How many sales orders are open, and what are they worth in total?">Copy</button></div>
     <div class="ask"><span class="kind">A list</span><p>List the customers with overdue invoices: amount overdue, days late and salesperson.</p><button type="button" data-copy="List the customers with overdue invoices: amount overdue, days late and salesperson.">Copy</button></div>
@@ -192,9 +224,9 @@ footer { margin-top: 36px; color: var(--muted); font-size: 0.9rem; }
     <h2 id="wrong">If something goes wrong</h2>
     <dl>
       <dt>Wicket's tools don't appear</dt>
-      <dd>The first start downloads Wicket's server. Without network access, or behind a proxy (set <code class="inline">HTTPS_PROXY</code>), it can't; once that's fixed, run <code class="inline">/mcp</code>, choose <span class="ui">wicket</span>, then <span class="ui">Reconnect</span>.</dd>
+      <dd>The first start downloads Wicket's server. Without network access, or behind a proxy (set <code class="inline">HTTPS_PROXY</code>), it can't; once that's fixed, run <code class="inline">/mcp</code>, choose <span class="ui">wicket</span>, then <span class="ui">Reconnect</span>. In the desktop app, open <span class="ui">Settings → Extensions</span> and switch Wicket off and on again.</dd>
       <dt>"Wicket isn't installed in that environment"</dt>
-      <dd>Step 2 on the left was done in another environment, or setup picked another one. Run <code class="inline">/wicket:setup</code> again and choose the sandbox where Wicket is installed.</dd>
+      <dd>Step 2 on the left was done in another environment, or setup picked another one. Run <code class="inline">/wicket:setup</code> again (in the desktop app, say “Set up Wicket”) and choose the sandbox where Wicket is installed.</dd>
       <dt>"Signed in, but there is no Wicket permission set"</dt>
       <dd>Step 3 on the left: the user needs <span class="ui">Wicket Data - Read</span>.</dd>
       <dt>Signed in, but nothing can be read</dt>
@@ -202,7 +234,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 0.9rem; }
       <dt>Blocked from the environment as a delegated admin</dt>
       <dd>The customer's global admin has turned partner access off. They turn it on for your partner tenant under <span class="ui">Partner access</span> on the environment in the Business Central admin center.</dd>
       <dt>The customer's sign-in policy blocks the sign-in</dt>
-      <dd>Some tenants don't allow Wicket's default sign-in app. In <code class="inline">/wicket:setup</code> choose <span class="ui">My own app registration</span>; the customer's Entra admin registers one (<a href="Wicket-Product-Guide.html#34-install-and-configure">guide, chapter 34</a>).</dd>
+      <dd>Some tenants don't allow Wicket's default sign-in app. In setup choose <span class="ui">My own app registration</span>; the customer's Entra admin registers one (<a href="Wicket-Product-Guide.html#34-install-and-configure">guide, chapter 34</a>).</dd>
     </dl>
   </div>
   <div class="panel" aria-labelledby="more">
@@ -211,7 +243,7 @@ footer { margin-top: 36px; color: var(--muted); font-size: 0.9rem; }
       <li><strong>Production:</strong> the same steps in the production environment.
         <div class="callout">As a delegated admin you hold SUPER, which also reads masked fields in clear. To keep them masked, switch off <span class="ui">Unmask Tier Enabled</span> on Wicket Setup.</div></li>
       <li><strong>Writing and posting:</strong> the preset <span class="ui">Read + Business Actions</span> and the actions companion (<a href="Wicket-Product-Guide.html#presets">guide, presets</a>).</li>
-      <li><strong>Unattended use:</strong> an app registration with a client secret; <code class="inline">/wicket:setup</code> stores the secret through a page in your browser (<a href="Wicket-Product-Guide.html#34-install-and-configure">guide, chapter 34</a>).</li>
+      <li><strong>Unattended use:</strong> an app registration with a client secret; setup stores the secret through a page in your browser (<a href="Wicket-Product-Guide.html#34-install-and-configure">guide, chapter 34</a>).</li>
       <li><strong>Other MCP hosts:</strong> see the <a href="https://github.com/davesmith7403/wicket/blob/main/mcp/README.md">server's README</a>.</li>
     </ul>
   </div>
@@ -288,6 +320,24 @@ for (const button of document.querySelectorAll('button[data-copy]')) {
   });
 }
 updateMailto();
+
+// The Claude Code / desktop app switch. Without script both step lists show, each under its own name.
+// #desktop in the address opens the desktop app's steps; the choice is remembered on this browser.
+const TABS = { code: ['tab-code', 'steps-code'], desktop: ['tab-desktop', 'steps-desktop'] };
+function showApp(app, remember) {
+  for (const [name, [tab, panel]] of Object.entries(TABS)) {
+    document.getElementById(tab).setAttribute('aria-selected', String(name === app));
+    document.getElementById(panel).hidden = name !== app;
+  }
+  if (remember) try { localStorage.setItem('wicket-quick-start-app', app); } catch {}
+}
+document.documentElement.classList.add('js');
+document.querySelector('.switch').hidden = false;
+for (const [name, [tab]] of Object.entries(TABS)) document.getElementById(tab).addEventListener('click', () => showApp(name, true));
+let saved = null;
+try { saved = localStorage.getItem('wicket-quick-start-app'); } catch {}
+showApp(location.hash === '#desktop' || saved === 'desktop' ? 'desktop' : 'code', false);
+if (location.hash === '#desktop') document.getElementById('you').scrollIntoView();
 </script>
 </body>
 </html>
