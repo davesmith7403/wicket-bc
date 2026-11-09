@@ -5,10 +5,12 @@
 # Wicket's invoke plane. They complement docs/smoke-test.http (which covers the core plane).
 #
 # Prerequisites:
-#   1. The "Wicket Actions - Base" companion app is installed. Its install codeunit enrols the four
-#      posting wrappers in the Procedure Catalog (for raw invoke) AND the four named actions
-#      (post-sales / post-purchase / post-gen-journal / post-item-journal) in the Action Catalog —
-#      everything enrols DISABLED. An admin must opt in per row: Allow Run on the Bcmag Action
+#   1. The "Wicket Actions - Base" companion app is installed. Its install codeunit enrols its
+#      thirteen wrappers in the Procedure Catalog (for raw invoke) AND thirteen named actions in the
+#      Action Catalog: post-sales, post-purchase, post-gen-journal, post-item-journal, release-sales,
+#      reopen-sales, release-purchase, reopen-purchase, make-order-from-quote,
+#      make-invoice-from-quote, make-purchase-order-from-quote, document-pdf and item-availability.
+#      This recipe exercises the four posting ones. Everything enrols DISABLED. An admin must opt in per row: Allow Run on the Bcmag Action
 #      Catalog page for the named actions (else 403 ".../action-disabled"), and Allow Run on the
 #      Procedure Catalog plus Allow Invoke on the exposure row for raw invoke (else 403).
 #   2. The calling principal holds standard BC posting permissions (e.g. D365 sales/purchase posting
@@ -37,7 +39,8 @@
 ###
 # 0. capabilities — confirm the actions are reachable
 # Expected: response.value.operations includes "invoke" and "action"; response.value.actions lists
-#           the enrolled actions that have Allow Run = true (a disabled action is absent).
+#           every enrolled action with "enabled" (its Allow Run), "mutating" and "previewSupported".
+#           A disabled action is listed with enabled: false; calling it answers 403 action-disabled.
 # envelope (sent serialised as the "envelope" string):
 # { "id": "act-0", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke", "data": {} }
 POST {{ep}}.capabilities
@@ -49,7 +52,8 @@ Content-Type: application/json
 ###
 # 1. Create a sales order header (insert into table 36). No. Series fills "No." on insert.
 #    Requires table 36 exposed for insert and the principal's write permission.
-# Expected: value carries the created record's @recordId / @systemId and the assigned "No.".
+# Expected: value = { recordId, "@etag" }. The answer does not carry the assigned "No.": read it
+#           with the query in section 1b.
 # envelope (sent serialised as the "envelope" string):
 # {
 #   "id": "act-1", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke",
@@ -65,8 +69,30 @@ Content-Type: application/json
 
 {"envelope": "{\"id\": \"act-1\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"data\": {\"tableId\": 36, \"values\": {\"Document Type\": \"Order\", \"Sell-to Customer No.\": \"10000\"}}}"}
 
+###
+# 1b. Read the number the No. Series assigned (table 36 exposed for read). Option fields are
+#     filtered by ordinal: "Document Type" eq 1 is Order. Set modifiedAfter to a moment just before
+#     section 1 ran, so only the new order matches; with several rows, take the newest.
+# Expected: value = [ { "No.": "<the new order>", "SystemModifiedAt": "...", "@recordId", "@systemId",
+#           "@etag" } ]. The row's @systemId is what sections 3b and 9 take.
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-1b", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke",
+#   "data": {
+#     "tableId": 36,
+#     "select": ["No.", "SystemModifiedAt"],
+#     "filter": "\"Document Type\" eq 1 and \"Sell-to Customer No.\" eq '10000'",
+#     "modifiedAfter": "<a moment before section 1, e.g. 2026-07-04T00:00:00Z>"
+#   }
+# }
+POST {{ep}}.query
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-1b\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"data\": {\"tableId\": 36, \"select\": [\"No.\", \"SystemModifiedAt\"], \"filter\": \"\\\"Document Type\\\" eq 1 and \\\"Sell-to Customer No.\\\" eq '10000'\", \"modifiedAfter\": \"<a moment before section 1, e.g. 2026-07-04T00:00:00Z>\"}}"}
+
 # The answer's "value" is a JSON string, which REST Client cannot path into: parse it, then put the
-# created order's "No." here for the requests below.
+# order's "No." from section 1b here for the requests below.
 @orderNo = <No. of the order created above>
 
 ###
@@ -247,6 +273,29 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {"envelope": "{\"id\": \"act-9\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"idempotencyKey\": \"smoke-act-9-<unique>\", \"data\": {\"action\": \"post-sales\", \"target\": {\"systemId\": \"<paste-an-@systemId-from-a-query-row>\"}, \"args\": {\"ship\": true, \"invoice\": true}}}"}
+
+###
+# 9b. Preview the same posting: "preview": true runs Business Central's posting preview and rolls
+#     everything back. Nothing is posted, so no idempotencyKey is needed and the call also works
+#     while Read-Only Mode is on. Send preview in data, never inside args (that is a 400).
+# Expected: value = the preview: wouldPost and what the post would create, or wouldPost: false with
+#           errors when it would fail. Nothing is written.
+#           A verb without preview support → 400 ".../preview-unsupported".
+# envelope (sent serialised as the "envelope" string):
+# {
+#   "id": "act-9b", "issuedAt": "2026-07-04T00:00:00Z", "origin": "actions-smoke",
+#   "data": {
+#     "action": "post-sales",
+#     "preview": true,
+#     "target": { "systemId": "<paste-an-@systemId-from-a-query-row>" },
+#     "args": { "ship": true, "invoice": true }
+#   }
+# }
+POST {{ep}}.action
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"envelope": "{\"id\": \"act-9b\", \"issuedAt\": \"2026-07-04T00:00:00Z\", \"origin\": \"actions-smoke\", \"data\": {\"action\": \"post-sales\", \"preview\": true, \"target\": {\"systemId\": \"<paste-an-@systemId-from-a-query-row>\"}, \"args\": {\"ship\": true, \"invoice\": true}}}"}
 
 ###
 # 10. Post a general journal batch via the named action (Allow Run on the "post-gen-journal" row).

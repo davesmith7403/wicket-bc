@@ -14,7 +14,13 @@ codeunit 94160 "Bcmag Op Batch"
     // A value, or a recordId, may reference an earlier item: { "fromItem": n } is the record item n created
     // or changed (as recordId); { "fromItem": n, "field": "No." } (or "fieldNo") is that field's value, read
     // back after item n ran — an order header's number for its lines. The field must be readable in clear
-    // under the field policy: a hidden or masked value is never copied into another field.
+    // under the field policy, on a table exposed for read: a hidden or masked value, or one from a table
+    // the caller may write but not read, is never copied into another field. A FlowField is calculated;
+    // a FlowFilter, Blob or Media field cannot be referenced.
+    //
+    // An item that names its record by { "fromItem": n } and sends no etag is given the record's current
+    // one: the record was produced inside this same transaction, so nobody else can have changed it, and
+    // without this a chained item could never run on a tenant that requires an etag on writes.
 
     Access = Public;
 
@@ -25,14 +31,12 @@ codeunit 94160 "Bcmag Op Batch"
         Problem: Codeunit "Bcmag Problem";
         JsonRead: Codeunit "Bcmag Json Read";
         Codec: Codeunit "Bcmag Record Id Codec";
-        MaxItemsTok: Label '100', Locked = true;
 
     procedure MaxItems(): Integer
     var
-        Max: Integer;
+        Authorizer: Codeunit "Bcmag Op Authorizer";
     begin
-        Evaluate(Max, MaxItemsTok);
-        exit(Max);
+        exit(Authorizer.MaxBatchItems());
     end;
 
     procedure Run(Data: JsonObject; var Response: JsonObject; var Fail: JsonObject; var Cost: Integer): Boolean
@@ -196,7 +200,7 @@ codeunit 94160 "Bcmag Op Batch"
         Tok, ValueTok : JsonToken;
         Member, ValueName : Text;
         Values, Resolved : JsonObject;
-        RecordToken: Text;
+        RecordToken, ChainedToken, CurrentEtag : Text;
         ResolvedValue: JsonValue;
     begin
         Clear(ItemData);
@@ -209,6 +213,7 @@ codeunit 94160 "Bcmag Op Batch"
                     if IsReference(Tok) then begin
                         if not RecordOf(Tok.AsObject(), Index, Produced, Deleted, RecordToken, Fail) then exit(false);
                         ItemData.Add('recordId', RecordToken);
+                        ChainedToken := RecordToken;
                     end else
                         ItemData.Add('recordId', Tok);
                 'values', 'valuesByFieldNo':
@@ -230,7 +235,23 @@ codeunit 94160 "Bcmag Op Batch"
                     ItemData.Add(Member, Tok);
             end;
         end;
+        if (ChainedToken <> '') and not ItemData.Contains('etag') then begin
+            CurrentEtag := CurrentEtagOf(ChainedToken);
+            if CurrentEtag <> '' then
+                ItemData.Add('etag', CurrentEtag);
+        end;
         exit(true);
+    end;
+
+    local procedure CurrentEtagOf(RecordToken: Text): Text
+    var
+        RecordAccess: Codeunit "Bcmag Record Access";
+        RecRef: RecordRef;
+        ErrorMsg: Text;
+    begin
+        if not Codec.Decode(RecordToken, RecRef, ErrorMsg) then
+            exit('');
+        exit(RecordAccess.CurrentEtag(RecRef));
     end;
 
     local procedure IsReference(Tok: JsonToken): Boolean
@@ -259,6 +280,7 @@ codeunit 94160 "Bcmag Op Batch"
     local procedure FieldValueOf(Ref: JsonObject; Index: Integer; Produced: Dictionary of [Integer, Text]; Deleted: List of [Integer]; var Value: JsonValue; var Fail: JsonObject): Boolean
     var
         Policy: Codeunit "Bcmag Field Policy";
+        Exposure: Record "Bcmag Exposure";
         RecRef: RecordRef;
         FldRef: FieldRef;
         Tok: JsonToken;
@@ -277,10 +299,22 @@ codeunit 94160 "Bcmag Op Batch"
         end else begin
             if not Ref.Get('field', Tok) then
                 exit(InvalidReference('a value reference needs "field" (a field name) or "fieldNo"; { "fromItem": n } alone is only valid as a recordId', Fail));
-            FieldName := Tok.AsValue().AsText();
+            if not Tok.IsValue() then
+                exit(InvalidReference('"field" must be a field name', Fail));
+            if Tok.AsValue().IsNull() then
+                exit(InvalidReference('"field" must be a field name', Fail));
+            if not TryAsText(Tok, FieldName) then
+                exit(InvalidReference('"field" must be a field name', Fail));
             FieldNo := FieldNoByName(RecRef, FieldName);
             if FieldNo = 0 then
                 exit(InvalidReference(StrSubstNo('table %1 has no field "%2"', RecRef.Number(), FieldName), Fail));
+        end;
+        // A reference is a READ of the earlier item's table: being allowed to write a table says nothing
+        // about being allowed to read it, and the copied value becomes readable wherever it lands.
+        if not Exposure.IsAllowed(Exposure."Object Type"::Table, RecRef.Number(), 'read') then begin
+            Fail := Problem.NewFailure(403, 'not-exposed', 'Not exposed',
+                StrSubstNo('table %1 is not exposed for read, so a value cannot be copied from it', RecRef.Number()));
+            exit(false);
         end;
         if not Policy.IsReadable(RecRef.Number(), FieldNo) then begin
             Fail := Problem.NewFailure(403, 'field-restricted', 'Field access restricted',
@@ -293,8 +327,18 @@ codeunit 94160 "Bcmag Op Batch"
             exit(false);
         end;
         FldRef := RecRef.Field(FieldNo);
+        if (FldRef.Class() = FieldClass::FlowFilter) or (FldRef.Type() in [FieldType::Blob, FieldType::Media, FieldType::MediaSet]) then
+            exit(InvalidReference(StrSubstNo('field %1 on table %2 holds no value that can be copied (a FlowFilter, Blob or Media field)', FieldNo, RecRef.Number()), Fail));
+        if FldRef.Class() = FieldClass::FlowField then
+            FldRef.CalcField();
         Value := ValueOf(FldRef);
         exit(true);
+    end;
+
+    [TryFunction]
+    local procedure TryAsText(Tok: JsonToken; var Value: Text)
+    begin
+        Value := Tok.AsValue().AsText();
     end;
 
     local procedure FieldNoByName(var RecRef: RecordRef; FieldName: Text): Integer

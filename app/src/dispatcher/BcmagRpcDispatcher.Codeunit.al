@@ -499,20 +499,29 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
     local procedure RecordFailedRun()
     var
         RunnerCtx: Codeunit "Bcmag Op Runner Context"; // single instance: the request's context
-        Recorder: Codeunit "Bcmag Change Recorder";
         Kind: Enum "Bcmag Change Kind";
         Name, Detail: Text;
         SystemId: Guid;
     begin
         if RunnerCtx.TakeFailedRun(Kind, Name, SystemId, Detail) then
-            Recorder.RecordRun(Kind, Name, 0, SystemId, Recorder.FailedOutcome(), Detail);
+            if not TryRecordFailedRun(Kind, Name, SystemId, Detail) then;
+    end;
+
+    // Best-effort, like the Operation Log insert: a history row that cannot be written (a lock, a
+    // permission) must not escape the dispatcher and take the settle, the snapshot and the log row
+    // of an operation that already ran with it.
+    [TryFunction]
+    local procedure TryRecordFailedRun(Kind: Enum "Bcmag Change Kind"; Name: Text; SystemId: Guid; Detail: Text)
+    var
+        Recorder: Codeunit "Bcmag Change Recorder";
+    begin
+        Recorder.RecordRun(Kind, Name, 0, SystemId, Recorder.FailedOutcome(), Detail);
     end;
 
     // A mutating action or invoke that ended in a 5xx after its wrapper may have committed: one
     // "Failed - may have changed data" entry, named and targeted from the request itself.
     local procedure RecordRunAfterFailure(Operation: Text; Data: JsonObject; Detail: Text)
     var
-        Recorder: Codeunit "Bcmag Change Recorder";
         Tok: JsonToken;
         Kind: Enum "Bcmag Change Kind";
         Name: Text;
@@ -534,7 +543,7 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
         end;
         if not TargetSystemIdOf(Data, 'target', SystemId) then
             if TargetSystemIdOf(Data, 'args', SystemId) then;
-        Recorder.RecordRun(Kind, Name, 0, SystemId, Recorder.FailedOutcome(), Detail);
+        if not TryRecordFailedRun(Kind, Name, SystemId, Detail) then;
     end;
 
     local procedure TargetSystemIdOf(Data: JsonObject; Member: Text; var SystemId: Guid): Boolean
@@ -561,6 +570,16 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
         DurationMs := EndedAt - StartedAt;
         Logger.Write(Id, IdempotencyKey, Operation, Origin, Caller, Status, Cost, DurationMs, ProblemType, ProblemDetail, StartedAt, EndedAt, AuditData);
         EmitTelemetry(Operation, Origin, Status, Cost, DurationMs, ProblemType);
+        if not TryEnsureMaintenance() then;
+    end;
+
+    // Keeps the maintenance task (log and change-history retention) armed; never allowed to fail a request.
+    [TryFunction]
+    local procedure TryEnsureMaintenance()
+    var
+        Reaper: Codeunit "Bcmag Async Reaper";
+    begin
+        Reaper.EnsureIfOverdue();
     end;
 
     local procedure EmitTelemetry(Operation: Text; Origin: Text; Status: Integer; Cost: Integer; DurationMs: Integer; ProblemType: Text)

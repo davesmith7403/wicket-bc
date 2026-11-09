@@ -12,7 +12,7 @@ There are three distinct version numbers; do not conflate them.
 |---|---|---|---|
 | **URL major version** | the `v1.0` segment in `/api/wicket/rpc/v1.0/...` (the API page's `APIVersion`) | a **breaking wire change** is unavoidable | new path; old path stays online for the deprecation window |
 | **Data schema version** | `schemaVersion` in `describe` and `capabilities` responses (currently `"1.0"`) | the shape of an operation's `data` / result changes in a way callers can branch on | additive changes do **not** force a new URL |
-| **Extension version** | `app.json` `version` (currently `1.3.0.0`) | any release | release/upgrade tracking only; not a wire contract |
+| **Extension version** | `app.json` `version` (currently `1.4.1.0`) | any release | release/upgrade tracking only; not a wire contract |
 
 The URL segment is the only hard compatibility boundary. `app.json` can go from `1.3` to `1.9`
 shipping new operations and fields without ever touching the URL, as long as the additive rule below holds.
@@ -73,6 +73,36 @@ a new path leaf — e.g. `queryV2` — leaving the rest of `v1.0` intact.)
 
 ## Current state
 
+- **Version 1.4.1.0** (companion `0.3.1.0`, AL-Go `repoVersion` `1.4`; plugin and MCP server `2.6.1`).
+  A fix release with no new operation, table or Setup field and no upgrade code. **Upgrade from
+  1.4.0.0:** two of its fixes are needed for 1.4.0.0 to work for a caller below `Wicket - Admin`:
+  - the change recorder no longer modifies a row the data-plane sets only let it insert (every
+    generic write answered 500 with Record Changes on, the default);
+  - `capabilities` no longer calls the Edit-rung batch handler (500 for a principal on the Read or
+    Execute rung that holds no codeunit wildcard such as D365 BASIC).
+- **Stricter on the wire in 1.4.1.0** (none widens access):
+  - `post-sales` and `post-purchase` refuse what the Post action on the document page refuses (an
+    enabled approval workflow with the document not approved, unpaid prepayments) and never post a
+    quote or blanket order; the quote conversions make the quote page's approval check. A preview
+    meets the same refusals.
+  - A `systemId` sent with a `documentType` or `no` that names another document is refused.
+  - A batch `{ fromItem, field }` reference needs the earlier item's table exposed for read
+    (`403 not-exposed`); a FlowFilter, Blob or Media field is `400 invalid-reference`.
+  - `describe` of an API page over a temporary source table answers `routable: false`,
+    `notRoutableReason: "temporary-source"`.
+  - The change history renders a masked non-text field as a read does (nothing, a hash token or the
+    fixed text); `changes` shows no values for a table not exposed for read, and a stored `changes`
+    answer is re-judged before it is replayed.
+  - `query` answers `403 not-exposed` when the caller lacks the table's read permission.
+  - Strong ETags on tables with field numbers of 1000 and above miss once after the upgrade
+    (`412`, re-read): the hash input is now locale-invariant.
+- **Additive in 1.4.1.0:** a chained batch item (`recordId: { fromItem }`) with no `etag` is given
+  the record's current one, so it runs where **Require ETag On Writes** is on; the Operation Log row
+  of a batch carries `n items` and each item's op, table and field names; `Wicket - Audit Changes`
+  works when assigned alone; the maintenance task that purges the logs is re-armed from the request
+  path.
+- **Version 1.4.0.0** added the `batch` and `changes` operations and the change history (Setup group
+  *Change History*; an upgraded tenant begins to record what the agent changes).
 - **Version 1.3.0.0** (companion `0.3.0.0`, AL-Go `repoVersion` `1.3`, MCP server `2.3.0`).
 - **Behaviour to know before upgrading from an earlier build.** The core enforces the action
   catalog's `Is Mutating`: a verb marked non-mutating runs inside a forced rollback, so whatever it

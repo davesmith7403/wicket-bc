@@ -13,11 +13,11 @@ business actions, and export asynchronously against BC safely and without bespok
 It is deny-by-default, returns RFC 7807 problem documents, enforces optimistic concurrency, logs
 every call, and emits Application Insights telemetry.
 
-- App: `app/app.json` → `Wicket`, version `1.3.0.0`, publisher `Dave The Wicketkeeper`, object range `94100–94199`.
-- Companion app: [`actions/`](actions/) → `Wicket Actions - Base`, version `0.3.0.0`, object range
+- App: `app/app.json` → `Wicket`, version `1.4.1.0`, publisher `Dave The Wicketkeeper`, object range `94100–94199`.
+- Companion app: [`actions/`](actions/) → `Wicket Actions - Base`, version `0.3.1.0`, object range
   `94200–94249` — the Base-App-dependent action providers (posting wrappers). Optional.
-- Status: **full read/write/invoke plane, named actions, field-level policy, and async Azure Blob
-  delivery built.** 389 core AL tests and 36 companion tests; see [Status](#status) for what is
+- Status: **full read/write/invoke plane, batch writes, change history, named actions, field-level
+  policy, and async Azure Blob delivery built.** 454 core AL tests and 38 companion tests; see [Status](#status) for what is
   still unverified.
 
 ## What it is
@@ -305,9 +305,11 @@ wrappers enforce Gen. Jnl.-Post's refusals (Force Posting Report, Job G/L WIP so
   others. Only the admin pages show them.
 - **Permission sets are a privilege ladder, enforced by the platform.** The extension ships composable
   sets (`app/permissionSet/`):
-  `Wicket - Read` (the read operations, async delivery, status/cancel/requests; Insert on the log and
-  queue tables only), `Wicket - Execute` (adds `invoke`/`action`), `Wicket - Edit` (adds
-  `insert`/`modify`/`delete`), `Wicket - Audit` (read-only view of every admin page and log) and
+  `Wicket - Read` (the read operations, async delivery, status/cancel/requests, and `changes` for the
+  caller's own entries; Insert on the log, queue and change-history tables only), `Wicket - Execute`
+  (adds `invoke`/`action`), `Wicket - Edit` (adds `insert`/`modify`/`delete`/`batch`), `Wicket - Audit
+  Changes` (every principal's change history: the Wicket Changes page, and `changes` with a `user`
+  filter), `Wicket - Audit` (read-only view of every admin page and log; includes Audit Changes) and
   `Wicket - Admin` (the control plane: exposure, setup, catalogs, credential, log purge). Each step
   grants Execute on the handler codeunits it names **and** full rights on one empty **role-gate**
   table (`Bcmag Execute Gate` from Execute up, `Bcmag Write Gate` from Edit up). The dispatcher checks
@@ -341,7 +343,7 @@ alc /project:./app /packagecachepath:./.alpackages /out:Wicket.app
 # companion Actions app (optional; range 94200–94249; depends on the main app)
 alc /project:./actions /packagecachepath:./actions/.alpackages /out:Wicket_Actions_Base.app
 
-# test app (range 94300–94349; depends on the main app, Library Assert and Test Runner)
+# test app (range 94300–94349; depends on the main app, Library Assert, Test Runner and Permissions Mock)
 alc /project:./test /packagecachepath:./test/.alpackages /out:Wicket_Tests.app
 ```
 

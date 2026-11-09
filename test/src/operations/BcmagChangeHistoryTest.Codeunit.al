@@ -193,6 +193,53 @@ codeunit 94346 "Bcmag Change History Test"
     end;
 
     [Test]
+    procedure MaskedNonTextFieldStoresNoPartialValue()
+    var
+        Entry: Record "Bcmag Change Entry";
+    begin
+        // A read renders a masked Decimal as null: the history must not keep "****.5" of it.
+        Prepare("Bcmag Record Changes"::OldAndNewValues);
+        NewCustomer('CH-6B', 'Old Co', '');
+        Helper.SetFieldPolicyMode("Bcmag Field Policy Mode"::Explicit);
+        Helper.SetFieldAccess(Database::Customer, 1, "Bcmag Read Access"::Clear, '', false);
+        Helper.SetFieldAccess(Database::Customer, 20, "Bcmag Read Access"::Masked, 'PARTIAL', true);
+        SetCreditLimit('CH-6B', 125000.5);
+        LastEntry(Entry);
+        AssertLine(Entry."Entry No.", 20, '', '', "Bcmag Read Access"::Masked);
+    end;
+
+    [Test]
+    procedure EntryIsWrittenOnceWithItsFieldCount()
+    var
+        Entry: Record "Bcmag Change Entry";
+        FieldChange: Record "Bcmag Field Change";
+    begin
+        // The data-plane sets grant insert on the history and nothing more, so the count is on the
+        // entry when it is inserted (it used to be set by a Modify a non-admin caller may not make).
+        Prepare("Bcmag Record Changes"::OldAndNewValues);
+        NewCustomer('CH-6C', 'Old Co', '5550011');
+        ModifyCustomer('CH-6C', 'New Co', '5559988');
+        LastEntry(Entry);
+        FieldChange.SetRange("Entry No.", Entry."Entry No.");
+        LibraryAssert.IsTrue(FieldChange.Count() >= 2, 'name and phone changed');
+        LibraryAssert.AreEqual(FieldChange.Count(), Entry."Field Count", 'the entry carries its line count');
+        LibraryAssert.AreEqual(Entry.SystemCreatedAt, Entry.SystemModifiedAt, 'the entry was never modified after its insert');
+    end;
+
+    [Test]
+    procedure SnapshotCostsNothingWhenTheHistoryIsOff()
+    var
+        Customer: Record Customer;
+        RecRef: RecordRef;
+    begin
+        Prepare("Bcmag Record Changes"::Off);
+        NewCustomer('CH-6D', 'Old Co', '');
+        Customer.Get('CH-6D');
+        RecRef.GetTable(Customer);
+        LibraryAssert.AreEqual(0, Recorder.Snapshot(RecRef).Count(), 'no snapshot is taken with the history off');
+    end;
+
+    [Test]
     procedure FieldsOnlyStoresNoValues()
     var
         Entry: Record "Bcmag Change Entry";
@@ -696,6 +743,71 @@ codeunit 94346 "Bcmag Change History Test"
     end;
 
     [Test]
+    procedure NonTextValueIsNeverShownPartiallyMasked()
+    var
+        Response, Fail, FieldObj: JsonObject;
+        EntryNo: BigInteger;
+    begin
+        // Field 20 is a Decimal, field 54 a Date. Stored clear and masked now: nothing, as a read would give null. Stored
+        // as a partial mask by an earlier version: nothing either.
+        Prepare("Bcmag Record Changes"::OldAndNewValues);
+        EntryNo := SeedEntryFor(UserSecurityId(), CurrentDateTime());
+        SeedLine(EntryNo, 20, '0', '125000.5', "Bcmag Read Access"::Clear);
+        SeedLine(EntryNo, 54, '****17', '****18', "Bcmag Read Access"::Masked);
+        Helper.SetFieldPolicyMode("Bcmag Field Policy Mode"::Explicit);
+        Helper.SetFieldAccess(Database::Customer, 20, "Bcmag Read Access"::Masked, 'PARTIAL', false);
+        Helper.SetFieldAccess(Database::Customer, 54, "Bcmag Read Access"::Masked, 'PARTIAL', false);
+        LibraryAssert.IsTrue(OpChanges.RunScoped(NoFilter(), false, Response, Fail), 'changes: ' + Helper.DetailOf(Fail));
+        FieldObj := FieldOf(Response, EntryNo, 20);
+        LibraryAssert.AreEqual('masked', Helper.TextField(FieldObj, 'shownAs'), 'now masked');
+        LibraryAssert.AreEqual('', Helper.TextField(FieldObj, 'new'), 'a masked decimal shows nothing');
+        FieldObj := FieldOf(Response, EntryNo, 54);
+        LibraryAssert.AreEqual('', Helper.TextField(FieldObj, 'old'), 'a stored partial mask of a non-text field is not shown');
+    end;
+
+    [Test]
+    procedure TableNoLongerExposedForReadShowsNoValues()
+    var
+        Response, Fail, FieldObj: JsonObject;
+        EntryNo: BigInteger;
+    begin
+        Prepare("Bcmag Record Changes"::OldAndNewValues);
+        EntryNo := SeedEntryFor(UserSecurityId(), CurrentDateTime());
+        SeedLine(EntryNo, 2, 'Old Co', 'New Co', "Bcmag Read Access"::Clear);
+        Helper.ConfigureAllowlistedMode();
+        Helper.ExposeTable(Database::Customer, false, true, true, false);
+        LibraryAssert.IsTrue(OpChanges.RunScoped(NoFilter(), false, Response, Fail), 'changes: ' + Helper.DetailOf(Fail));
+        FieldObj := FieldOf(Response, EntryNo, 2);
+        LibraryAssert.AreEqual('hidden', Helper.TextField(FieldObj, 'shownAs'), 'writable but not readable: the field is named, not shown');
+        LibraryAssert.IsFalse(FieldObj.Contains('old') or FieldObj.Contains('new'), 'no values from a table the agent may not read');
+    end;
+
+    [Test]
+    procedure ReplayedChangesAnswerIsJudgedAgainstTodaysPolicy()
+    var
+        Body, Response: JsonObject;
+        EntryNo: BigInteger;
+        Status: Integer;
+    begin
+        Prepare("Bcmag Record Changes"::OldAndNewValues);
+        EntryNo := SeedEntryFor(UserSecurityId(), CurrentDateTime());
+        SeedLine(EntryNo, 9, '5550011', '5559988', "Bcmag Read Access"::Clear);
+        Body := Helper.EnvelopeWithKey(NoFilter(), Helper.NewIdemKey());
+        Helper.CommitFixtures();
+        Response := Dispatcher.RunEx('changes', Body, '', Status);
+        LibraryAssert.AreEqual(200, Status, 'changes: ' + Helper.DetailOf(Response));
+
+        Helper.SetFieldPolicyMode("Bcmag Field Policy Mode"::Explicit);
+        Helper.SetFieldAccess(Database::Customer, 9, "Bcmag Read Access"::Masked, 'PARTIAL', false);
+        Helper.CommitFixtures();
+        Response := Dispatcher.RunEx('changes', Body, '', Status);
+        LibraryAssert.AreEqual(403, Status, 'a stored answer showing a now-masked field in clear is not replayed');
+
+        Helper.ConfigureOpenMode();
+        Helper.CommitFixtures();
+    end;
+
+    [Test]
     procedure NeverShownMoreClearlyThanStored()
     var
         Response, Fail, FieldObj: JsonObject;
@@ -855,6 +967,20 @@ codeunit 94346 "Bcmag Change History Test"
         Values.Add('Name', Name);
         if Phone <> '' then
             Values.Add('Phone No.', Phone);
+        Data.Add('tableId', Database::Customer);
+        Data.Add('recordId', RecordIdOf(Customer));
+        Data.Add('values', Values);
+        LibraryAssert.IsTrue(OpModify.Run(Data, Response, Fail, Cost), 'modify: ' + Helper.DetailOf(Fail));
+    end;
+
+    local procedure SetCreditLimit(No: Code[20]; Amount: Decimal)
+    var
+        Customer: Record Customer;
+        Data, Values, Response, Fail: JsonObject;
+        Cost: Integer;
+    begin
+        Customer.Get(No);
+        Values.Add('Credit Limit (LCY)', Amount);
         Data.Add('tableId', Database::Customer);
         Data.Add('recordId', RecordIdOf(Customer));
         Data.Add('values', Values);

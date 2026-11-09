@@ -46,6 +46,7 @@ codeunit 94103 "Bcmag Logger"
     // status/cancel: the async request id. None of these is a data value.
     local procedure TargetOf(Operation: Text; Data: JsonObject): Text
     var
+        Tok: JsonToken;
         CodeunitId: Integer;
     begin
         case Operation of
@@ -67,6 +68,10 @@ codeunit 94103 "Bcmag Logger"
                 end;
             'status', 'cancel':
                 exit(TextMember(Data, 'requestId'));
+            'batch':
+                if Data.Get('items', Tok) then
+                    if Tok.IsArray() then
+                        exit(StrSubstNo('%1 items', Tok.AsArray().Count()));
         end;
         exit('');
     end;
@@ -91,11 +96,35 @@ codeunit 94103 "Bcmag Logger"
                         Details.Add(Member, Tok);
                     'values', 'valuesByFieldNo', 'args':
                         Details.Add(Member, MemberNames(Tok));
+                    'items':
+                        Details.Add(Member, BatchItemShapes(Tok));
                 end;
         if Details.Keys().Count() = 0 then
             exit('');
         Details.WriteTo(Serialized);
         exit(Serialized);
+    end;
+
+    // A batch's items: per item its op, table and the NAMES of the fields it carried, never a value.
+    local procedure BatchItemShapes(Tok: JsonToken) Shapes: JsonArray
+    var
+        ItemTok, MemberTok: JsonToken;
+        Item, Shape: JsonObject;
+    begin
+        if not Tok.IsArray() then
+            exit;
+        foreach ItemTok in Tok.AsArray() do
+            if ItemTok.IsObject() then begin
+                Item := ItemTok.AsObject();
+                Clear(Shape);
+                Shape.Add('op', TextMember(Item, 'op'));
+                Shape.Add('tableId', IntegerMember(Item, 'tableId'));
+                if Item.Get('values', MemberTok) then
+                    Shape.Add('values', MemberNames(MemberTok));
+                if Item.Get('valuesByFieldNo', MemberTok) then
+                    Shape.Add('valuesByFieldNo', MemberNames(MemberTok));
+                Shapes.Add(Shape);
+            end;
     end;
 
     local procedure MemberNames(Tok: JsonToken) Names: JsonArray
@@ -143,7 +172,8 @@ codeunit 94103 "Bcmag Logger"
 
     local procedure ReturnsFieldValues(Operation: Text): Boolean
     begin
-        exit(Operation in ['query', 'readBlob']);
+        // batch: a { fromItem, field } reference copies a field value, lifting a mask the same way.
+        exit(Operation in ['query', 'readBlob', 'batch']);
     end;
 
     [TryFunction]

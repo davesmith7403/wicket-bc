@@ -337,7 +337,7 @@ td:first-child { color: var(--ink); }
     <span class="topbar-name">Wicket</span>
     <span class="topbar-sep" aria-hidden="true"></span>
     <span class="topbar-doc">Product Guide</span>
-    <span class="pill">App 1.3 · MCP 2.4 · 2026-10-28</span>
+    <span class="pill">App 1.4 · MCP 2.6 · 2026-11-09</span>
   </header>
   <nav class="toc" id="toc" aria-label="Contents">
     <div class="toc-head"><span>Contents</span></div>
@@ -361,7 +361,7 @@ td:first-child { color: var(--ink); }
 <p><strong>Generic JSON RPC over Microsoft Dynamics 365 Business Central, built for LLM agents.</strong></p>
 <div class="table-wrap"><table class="meta"><tbody><tr>
 <td>Product</td>
-<td>Wicket 1.3 (publisher Dave The Wicketkeeper) with the optional companion <code>Wicket Actions - Base</code> 0.3 and the <code>wicket-mcp</code> server 2.4</td>
+<td>Wicket 1.4 (publisher Dave The Wicketkeeper) with the optional companion <code>Wicket Actions - Base</code> 0.3 and the <code>wicket-mcp</code> server 2.6</td>
 </tr>
 <tr>
 <td>Platform</td>
@@ -369,7 +369,7 @@ td:first-child { color: var(--ink); }
 </tr>
 <tr>
 <td>Guide version</td>
-<td>2026-10-28</td>
+<td>2026-11-09</td>
 </tr>
 <tr>
 <td>Audience</td>
@@ -409,8 +409,10 @@ codeunit &quot;Bcmag Rpc Dispatcher&quot;      envelope validation · key rule �
 codeunit &quot;Bcmag Op Runner&quot;           gates (Read-Only Mode, then the role rung), then one handler:
    ├─ discover · describe · query (+aggregate) · readBlob · capabilities · skill · pageUrl · whoAmI
    ├─ insert · modify · delete       Value Coercer + Record Access (etag, security filter)
+   ├─ batch                          many of those three in one transaction, all or nothing
    ├─ invoke · action                Procedure Catalog / Action Catalog → wrapper codeunit
-   └─ status · cancel · requests     Request Queue (async delivery)
+   ├─ status · cancel · requests     Request Queue (async delivery)
+   └─ changes                        Change Entry / Field Change (the change history)
 </code></pre>
 <p>Every field a handler touches passes through the <strong>field policy</strong>; every table passes through <strong>exposure</strong>; every record re-fetch runs under the caller&#39;s <strong>security filter</strong>. A <code>query</code> that carries a <code>deliver</code> block never runs inline: the dispatcher writes a durable queue row and a background worker produces the package later.</p>
 <h3 id="the-gates-in-order">The gates, in order</h3>
@@ -615,7 +617,7 @@ codeunit &quot;Bcmag Op Runner&quot;           gates (Read-Only Mode, then the r
 <h2 id="4-security-model-in-one-page">4. Security model in one page</h2>
 <ul>
 <li><strong>Exposure list.</strong> Table <code>Bcmag Exposure</code> holds one row per table or codeunit with <code>Allow Read / Insert / Modify / Delete / Invoke</code>. In the default mode, <strong>Exposed tables only</strong> (API name <code>Allowlisted</code>), a table without a row is invisible. <code>Open</code> mode (for sandboxes) allows any table the principal&#39;s BC permissions allow, but never <code>invoke</code> unless the separate <code>Allow Invoke In Open Mode</code> switch is set.</li>
-<li><strong>Read-Only Mode.</strong> One switch on the setup card refuses every mutating operation (<code>insert</code>, <code>modify</code>, <code>delete</code>, <code>invoke</code>, <code>action</code>) before any other check. The exceptions are an action preview and a verb enrolled as non-mutating: both run inside a forced rollback that undoes their writes in Business Central (chapter 12 lists the limits). They can still <strong>read and return</strong> data: like every action they bypass the exposure list and the field policy, so on a read-only endpoint an enabled <code>document-pdf</code> serves any document&#39;s PDF and a posting preview returns amounts. Enable those verbs there only for principals who may see that, or mark them mutating to keep them off read-only.</li>
+<li><strong>Read-Only Mode.</strong> One switch on the setup card refuses every mutating operation (<code>insert</code>, <code>modify</code>, <code>delete</code>, <code>batch</code>, <code>invoke</code>, <code>action</code>) before any other check. The exceptions are an action preview, a verb enrolled as non-mutating and a <code>batch</code> sent with <code>preview: true</code>: each runs inside a forced rollback that undoes its writes in Business Central (chapter 12 lists the limits for actions). The first two can still <strong>read and return</strong> data: like every action they bypass the exposure list and the field policy, so on a read-only endpoint an enabled <code>document-pdf</code> serves any document&#39;s PDF and a posting preview returns amounts. Enable those verbs there only for principals who may see that, or mark them mutating to keep them off read-only.</li>
 <li><strong>Field policy.</strong> Business Central has no column-level security, so Wicket decides per field whether it may be read or written, on every surface that names a field. Each field resolves to Hidden, Masked or Clear. Three modes: <code>AllFields</code>, <code>ByClassification</code> (the fresh-install default: <code>CustomerContent</code> and <code>SystemMetadata</code> are Clear, <code>EUII</code> and <code>EUPI</code> are Masked, everything else is Hidden until an administrator decides) and <code>Explicit</code> (a field is Hidden unless it has a row). A caller holding <code>Wicket - Unmask</code>, or a per-user exception, can see Masked fields in clear.</li>
 <li><strong>Catalog enrolment.</strong> <code>invoke</code> runs only wrappers enrolled in the Procedure Catalog with <code>Allow Run</code>; <code>action</code> additionally needs an enabled Action Catalog row. There is no reflection over arbitrary AL methods.</li>
 <li><strong>Permission-set ladder.</strong> <code>Wicket - Read</code> → <code>Wicket - Execute</code> → <code>Wicket - Edit</code> for callers, <code>Wicket - Audit</code> and <code>Wicket - Admin</code> for humans, and two generic data sets, <code>Wicket Data - Read</code> and <code>Wicket Data - Exec</code>. Each rung is the only grant of Execute on its handler codeunits and of write rights on one empty role-gate table (<code>Bcmag Execute Gate</code> from Execute up, <code>Bcmag Write Gate</code> from Edit up); the dispatcher checks the gate before routing, so the plane is enforced per principal even against a codeunit wildcard held elsewhere, and a refusal is a typed <code>403 role-forbidden</code> with no side effects.</li>
@@ -664,7 +666,7 @@ codeunit &quot;Bcmag Op Runner&quot;           gates (Read-Only Mode, then the r
 <pre data-lang="bash"><code class="language-bash">alc /project:./app     /packagecachepath:./.alpackages /out:Wicket.app
 alc /project:./actions /packagecachepath:./actions/.alpackages /out:Wicket_Actions_Base.app
 </code></pre>
-<p>In VS Code open the <code>app/</code> folder (not the repository root), copy <code>app/.vscode/launch.json.example</code> to <code>launch.json</code> with your tenant and sandbox name, and press F5. The repository also carries an AL-Go pipeline that builds all three apps and runs the test suite in a BC 26 container on every push.</p>
+<p>In VS Code open the <code>app/</code> folder (not the repository root), copy <code>app/.vscode/launch.json.example</code> to <code>launch.json</code> with your tenant and sandbox name, and press F5. The repository also carries an AL-Go pipeline that builds all four apps (the core, the companion and their two test apps) and runs both test suites in a BC 26 container on every push.</p>
 <h3 id="what-installation-does">What installation does</h3>
 <ul>
 <li>Creates the <code>Wicket Setup</code> singleton for every company, with fail-closed defaults: mode Exposed tables only, field policy <code>ByClassification</code> (CustomerContent and SystemMetadata Clear, EUII and EUPI Masked with the <code>PARTIAL</code> profile, every other classification Hidden), the <strong>Unmask Tier Enabled</strong> switch on, async off, Read-Only Mode off, <strong>Require Key For Actions</strong> on, <strong>Allow Trigger Bypass</strong> off.</li>
@@ -724,7 +726,7 @@ Authorization: Bearer &lt;token&gt;
 </thead><tbody><tr>
 <td><code>Wicket - Read</code></td>
 <td>A read-only agent</td>
-<td><code>discover</code>, <code>describe</code>, <code>query</code> (including aggregates and async delivery), <code>readBlob</code>, <code>capabilities</code>, <code>skill</code>, <code>pageUrl</code>, <code>whoAmI</code>, and its own <code>status</code> / <code>requests</code> / <code>cancel</code>. Writes only its own audit rows and queue rows.</td>
+<td><code>discover</code>, <code>describe</code>, <code>query</code> (including aggregates and async delivery), <code>readBlob</code>, <code>capabilities</code>, <code>skill</code>, <code>pageUrl</code>, <code>whoAmI</code>, its own <code>status</code> / <code>requests</code> / <code>cancel</code>, and <code>changes</code> for its own entries. Writes only its own audit rows, queue rows and change history entries.</td>
 </tr>
 <tr>
 <td><code>Wicket - Execute</code></td>
@@ -873,7 +875,7 @@ Authorization: Bearer &lt;token&gt;
 </thead><tbody><tr>
 <td>Read-Only Mode</td>
 <td>off</td>
-<td>Refuses <code>insert</code>, <code>modify</code>, <code>delete</code>, <code>invoke</code> and mutating <code>action</code> calls for every caller, before any other check. Action previews and verbs enrolled non-mutating still run, inside a forced rollback (chapter 12); they can return data, so mark such a verb mutating to keep it off a read-only endpoint. Turn it on for a tenant that must never be written to through Wicket.</td>
+<td>Refuses <code>insert</code>, <code>modify</code>, <code>delete</code>, <code>batch</code>, <code>invoke</code> and mutating <code>action</code> calls for every caller, before any other check. Action previews, a <code>batch</code> with <code>preview: true</code> and verbs enrolled non-mutating still run, inside a forced rollback (chapter 12); they can return data, so mark such a verb mutating to keep it off a read-only endpoint. Turn it on for a tenant that must never be written to through Wicket.</td>
 </tr>
 <tr>
 <td>Mode</td>
@@ -1129,7 +1131,7 @@ Authorization: Bearer &lt;token&gt;
 </tbody></table></div>
 <p>Rules the table enforces regardless of what you enter:</p>
 <ul>
-<li>Wicket&#39;s own tables (94100–94199) can never be written through the data plane, in any mode. The Operation Log, the Idempotency Log, the Idempotency Reservation and the Request Queue can never be read through it either, because they hold every principal&#39;s rows; neither can the Access Exceptions (each user&#39;s grants and reasons) or the Field Exposure rows (which would name every field an administrator hid, while <code>describe</code> keeps a hidden field indistinguishable from a missing one). <code>discover</code> does not list them, in <code>Open</code> mode included. Setup, Exposure, the catalogs, the Classification Rules and the Mask Profiles remain readable as fixtures; <code>capabilities</code> publishes the rules and profiles anyway.</li>
+<li>Wicket&#39;s own tables (94100–94199) can never be written through the data plane, in any mode. The Operation Log, the Idempotency Log, the Idempotency Reservation and the Request Queue can never be read through it either, because they hold every principal&#39;s rows; the same holds for the change history (Change Entry and Field Change, with the Changes Gate), which the Wicket Changes page and the caller-scoped <code>changes</code> operation read instead. Neither can the Access Exceptions (each user&#39;s grants and reasons) or the Field Exposure rows (which would name every field an administrator hid, while <code>describe</code> keeps a hidden field indistinguishable from a missing one). <code>discover</code> does not list them, in <code>Open</code> mode included. Setup, Exposure, the catalogs, the Classification Rules and the Mask Profiles remain readable as fixtures; <code>capabilities</code> publishes the rules and profiles anyway.</li>
 <li>A row grants nothing the principal&#39;s Business Central permissions do not also grant. <code>describe</code> reports the effective <code>permissions</code> per table.</li>
 <li><code>discover</code> lists only tables that are exposed and readable by the caller, so an agent sees exactly the surface you opened.</li>
 </ul>
@@ -1564,7 +1566,7 @@ Authorization: Bearer &lt;token&gt;
 <td><code>itemNo</code>; <code>locationCode</code>, <code>variantCode</code>, <code>date</code> (default the work date), <code>quantity</code></td>
 </tr>
 </tbody></table></div>
-<p>The four posting verbs accept <code>preview: true</code> (chapter 23). <code>document-pdf</code> and <code>item-availability</code> are enrolled with <strong>Is Mutating</strong> off: they run inside the forced rollback, so a report that stamps <em>No. Printed</em> leaves no trace, they work on a read-only endpoint and they need no idempotency key. The quote conversions take the same path as <strong>Make Order</strong> / <strong>Make Invoice</strong> on the quote page: the customer or vendor is checked, the lines are copied, the quote is archived when the setup says so and then deleted. A sales quote tied to an opportunity in progress is refused, because Business Central would open the <em>Close Opportunity</em> page there. Release and reopen take the same path as the Release and Reopen actions on the document page, so the approval workflow and prepayment rules apply: a document pending approval can be neither released nor reopened, and a sales or purchase order with an unpaid prepayment becomes <em>Pending Prepayment</em> instead of released.</p>
+<p>The four posting verbs accept <code>preview: true</code> (chapter 23). <code>post-sales</code> and <code>post-purchase</code> make the checks the <strong>Post</strong> action on the document page makes before it posts: a document that an enabled approval workflow has not approved, or one with unpaid prepayments, is refused (a preview too), and a quote or blanket order is never posted. The quote conversions make the approval check of the quote page. When <code>systemId</code> is sent together with <code>documentType</code> or <code>no</code>, they must name the same document. <code>document-pdf</code> and <code>item-availability</code> are enrolled with <strong>Is Mutating</strong> off: they run inside the forced rollback, so a report that stamps <em>No. Printed</em> leaves no trace, they work on a read-only endpoint and they need no idempotency key. The quote conversions take the same path as <strong>Make Order</strong> / <strong>Make Invoice</strong> on the quote page: the customer or vendor is checked, the lines are copied, the quote is archived when the setup says so and then deleted. A sales quote tied to an opportunity in progress is refused, because Business Central would open the <em>Close Opportunity</em> page there. Release and reopen take the same path as the Release and Reopen actions on the document page, so the approval workflow and prepayment rules apply: a document pending approval can be neither released nor reopened, and a sales or purchase order with an unpaid prepayment becomes <em>Pending Prepayment</em> instead of released.</p>
 <p>The journal wrappers call the batch-posting codeunits directly (the interactive front ends would ask questions or, with <em>Post with Job Queue</em>, only schedule the post), but they apply the same business refusals those front ends apply first: a template with <strong>Force Posting Report</strong> must be posted through its report, and a Jobs general-journal template whose Source Code is Source Code Setup&#39;s <strong>Job G/L WIP</strong> code is refused (those lines belong to the WIP process). Results are described in chapter 23.</p>
 <p>To enable posting of sales documents: set <code>Allow Run</code> on the <code>post-sales</code> row of the Action Catalog (for <code>action</code>) and, if raw <code>invoke</code> is also wanted, <code>Allow Run</code> on the Procedure Catalog row for 94200 plus <code>Allow Invoke</code> on the exposure row for codeunit 94200. Revoke by switching the flag off; deleting a row is not durable because re-enrolment re-inserts it disabled.</p>
 <h3 id="adding-your-own-action">Adding your own action</h3>
@@ -1948,14 +1950,14 @@ Content-Type: application/json
 <p>For a codeunit: <code>{ codeunitId, name, schemaVersion, procedures: [ { procedure, returnShape, argsSchema?, description? } ] }</code>, enrolled procedures only.</p>
 <pre data-lang="json"><code class="language-json">{ &quot;data&quot;: { &quot;kind&quot;: &quot;api&quot;, &quot;pageId&quot;: 30009 } }
 </code></pre>
-<p>For an API page (<code>pageId</code>, or <code>queryId</code> for an API query): the catalog row plus <code>sourceTableView</code>, <code>fields: [ { name, mapped, fieldNo?, tableId?, readable } ]</code>, <code>routable</code>, <code>notRoutableReason?</code> and <code>catalogVersion</code>. Each API field names the table field it is bound to; one with <code>mapped: false</code> is computed by the API&#39;s own code and is never <code>readable</code>, because the field policy cannot judge it. <code>routable</code> is true only when API Routing is <code>Prefer</code> and Wicket would let the caller read the source table (exposure list, BC permissions); otherwise <code>notRoutableReason</code> says <code>routing-off</code>, <code>not-exposed</code> or, for an API query, <code>no-field-mapping</code>. The answer does not refuse a table the caller may not read (the API&#39;s shape is public); it answers <code>routable: false</code>. These governance answers follow the policy as it is now, so a client asks again before every API read. <code>sourceTableView</code> matters when choosing: an API may cover only part of its table (sales orders but not quotes, say). An id that is not an API page is <code>404 unknown-api</code>.</p>
+<p>For an API page (<code>pageId</code>, or <code>queryId</code> for an API query): the catalog row plus <code>sourceTableView</code>, <code>fields: [ { name, mapped, fieldNo?, tableId?, readable } ]</code>, <code>routable</code>, <code>notRoutableReason?</code> and <code>catalogVersion</code>. Each API field names the table field it is bound to; one with <code>mapped: false</code> is computed by the API&#39;s own code and is never <code>readable</code>, because the field policy cannot judge it. <code>routable</code> is true only when API Routing is <code>Prefer</code> and Wicket would let the caller read the source table (exposure list, BC permissions); otherwise <code>notRoutableReason</code> says <code>routing-off</code>, <code>not-exposed</code>, <code>temporary-source</code> (the page&#39;s source table is temporary: its code fills the fields from other tables, so the field policy cannot judge them) or, for an API query, <code>no-field-mapping</code>. The answer does not refuse a table the caller may not read (the API&#39;s shape is public); it answers <code>routable: false</code>. These governance answers follow the policy as it is now, so a client asks again before every API read. <code>sourceTableView</code> matters when choosing: an API may cover only part of its table (sales orders but not quotes, say). An id that is not an API page is <code>404 unknown-api</code>.</p>
 <h3 id="reading-through-an-api-mcp">Reading through an API (MCP)</h3>
 <p><code>wicket_api_read { pageId, select?, filter?, orderBy?, top?, skip?, count? }</code> is the MCP server&#39;s API-first read. It asks <code>describe kind:&quot;api&quot;</code> first, refuses unless <code>routable</code>, and allows only <code>readable</code> fields in <code>select</code>, <code>filter</code> and <code>orderBy</code>; with no <code>select</code> it selects exactly the readable fields and drops anything else the API returns. Navigation and lambdas (<code>/</code>) in a filter are refused, and so is a field name the API does not have. Refusals carry <code>suggest: { use: &quot;wicket_query&quot;, tableId }</code>. Use it when an API page covers the table and the fields you need; use <code>query</code> when routing is <code>Off</code>, when the fields are not in the API or not readable, or when the user asks for dynamic access.</p>
 <h2 id="20-query">20. query</h2>
 <pre data-lang="json"><code class="language-json">{ &quot;data&quot;: {
     &quot;tableId&quot;: 18,
     &quot;select&quot;:  [&quot;No.&quot;, &quot;Name&quot;, &quot;Balance (LCY)&quot;],
-    &quot;filter&quot;:  &quot;\&quot;Balance (LCY)\&quot; gt 1000 and Blocked eq &#39; &#39;&quot;,
+    &quot;filter&quot;:  &quot;\&quot;Balance (LCY)\&quot; gt 1000 and Blocked eq 0&quot;,
     &quot;orderBy&quot;: [&quot;Name asc&quot;],
     &quot;top&quot;:     50,
     &quot;include&quot;: { &quot;flowFields&quot;: true },
@@ -2017,7 +2019,11 @@ Content-Type: application/json
 </tr>
 </thead><tbody><tr>
 <td>Equality, inequality</td>
-<td><code>Status eq &#39;Open&#39;</code>, <code>Status ne &#39;Closed&#39;</code></td>
+<td><code>City eq &#39;London&#39;</code>, <code>City ne &#39;London&#39;</code></td>
+</tr>
+<tr>
+<td>Option or Enum field</td>
+<td>By ordinal: <code>&quot;Document Type&quot; eq 1</code>, <code>Status eq 0</code>. Take the ordinal from <code>describe</code> (<code>optionMembers[].ord</code>).</td>
 </tr>
 <tr>
 <td>Numeric, date, datetime comparison</td>
@@ -2025,7 +2031,7 @@ Content-Type: application/json
 </tr>
 <tr>
 <td>AND chaining</td>
-<td><code>Country eq &#39;US&#39; and Blocked eq &#39; &#39; and Balance gt 0</code></td>
+<td><code>Country eq &#39;US&#39; and Blocked eq 0 and Balance gt 0</code></td>
 </tr>
 <tr>
 <td>Same-field OR</td>
@@ -2056,7 +2062,7 @@ Content-Type: application/json
 <td><code>#22 gt 1000</code></td>
 </tr>
 </tbody></table></div>
-<p>Not supported, with specific errors: cross-field <code>or</code>, standalone <code>not</code>, arithmetic, lambdas, casts. Comparisons and <code>in()</code> are exact (a <code>*</code> is a literal star). Each <code>in()</code> member is converted to a typed value by its literal kind (numbers, dates and date-times parsed invariantly, as in a single comparison), so <code>Amount in (1.5, 2.5)</code> means the same under every regional setting. A missing or trailing comma, or <code>null</code>, inside <code>in()</code> is <code>400 invalid-filter</code>; test for blank with <code>eq null</code>. Inside <code>startswith</code>, <code>endswith</code> and <code>contains</code>, <code>*</code> and <code>?</code> are live Business Central wildcards. Option fields take the member name as a string, and the blank <code>Blocked</code> state is a single space.</p>
+<p>Not supported, with specific errors: cross-field <code>or</code>, standalone <code>not</code>, arithmetic, lambdas, casts. Comparisons and <code>in()</code> are exact (a <code>*</code> is a literal star). Each <code>in()</code> member is converted to a typed value by its literal kind (numbers, dates and date-times parsed invariantly, as in a single comparison), so <code>Amount in (1.5, 2.5)</code> means the same under every regional setting. A missing or trailing comma, or <code>null</code>, inside <code>in()</code> is <code>400 invalid-filter</code>; test for blank with <code>eq null</code>. Inside <code>startswith</code>, <code>endswith</code> and <code>contains</code>, <code>*</code> and <code>?</code> are live Business Central wildcards. Filter an Option or Enum field by its ordinal, not by a member name: Business Central reads a name in the session language, so <code>Status eq &#39;Open&#39;</code> works on an English session and matches nothing, or is refused, on another. <code>describe</code> lists each member&#39;s <code>ord</code>; the blank <code>Blocked</code> member is ordinal 0.</p>
 <h3 id="paging">Paging</h3>
 <ol>
 <li>Send the query with <code>top</code>.</li>
@@ -2179,7 +2185,7 @@ Content-Type: application/json
 ] } }
 </code></pre>
 <p>Up to 100 items (<code>limits.maxBatchItems</code>), any tables, each in the shape of <code>insert</code>, <code>modify</code> or <code>delete</code> plus <code>op</code>. Every item runs through the same handler as a single write, so exposure, the field policy, validation, the etag check and the change history apply to each; the items run in one transaction, with explicit commits inside table triggers ignored, so <strong>all are written or none</strong>. The first failing item stops the batch: the problem is that item&#39;s own (<code>400</code>, <code>403</code>, <code>412</code>, <code>422</code> …) with the extension members <code>item</code> (its index) and <code>itemOp</code>, and a <code>detail</code> starting <code>items[1] (insert, table 37): </code>; nothing is written. <code>preview: true</code> runs every item inside a forced rollback and answers the per-item results (their recordIds and etags describe records that no longer exist) or the first failure; it is allowed in Read-Only Mode.</p>
-<p>A value <code>{ &quot;fromItem&quot;: n, &quot;field&quot;: &quot;&lt;name&gt;&quot; }</code> (or <code>&quot;fieldNo&quot;</code>) is that field of the record item n wrote, read after it ran — the header&#39;s number in the example above. <code>recordId: { &quot;fromItem&quot;: n }</code> targets the record item n created or changed. Only earlier items; a referenced field must be readable in clear (<code>403 field-restricted</code> / <code>field-masked</code> otherwise, so a hidden value is never copied into a visible field); a later item, a deleted record or an unknown field is <code>400 invalid-reference</code>. Result: <code>{ items: [ { index, op, recordId, @etag? | deleted } ], count, preview? }</code>; cost is the number of items. Requires <code>Wicket - Edit</code>. An idempotency key covers the whole batch; a replay re-checks every item&#39;s table.</p>
+<p>A value <code>{ &quot;fromItem&quot;: n, &quot;field&quot;: &quot;&lt;name&gt;&quot; }</code> (or <code>&quot;fieldNo&quot;</code>) is that field of the record item n wrote, read after it ran — the header&#39;s number in the example above. <code>recordId: { &quot;fromItem&quot;: n }</code> targets the record item n created or changed. Only earlier items; a referenced field must be readable in clear, on a table exposed for read (<code>403 field-restricted</code> / <code>field-masked</code> / <code>not-exposed</code> otherwise, so a hidden value, or one from a table the caller may write but not read, is never copied into a visible field); a FlowField is calculated; a later item, a deleted record, an unknown field, or a FlowFilter, Blob or Media field is <code>400 invalid-reference</code>. An item that names its record by <code>{ &quot;fromItem&quot;: n }</code> and sends no <code>etag</code> is checked against the record as the batch left it, so chained items also work where <strong>Require ETag On Writes</strong> is on. Result: <code>{ items: [ { index, op, recordId, @etag? | deleted } ], count, preview? }</code>; cost is the number of items. Requires <code>Wicket - Edit</code>. An idempotency key covers the whole batch; a replay re-checks every item&#39;s table.</p>
 <h3 id="making-writes-safe-to-retry">Making writes safe to retry</h3>
 <p>Put an <code>idempotencyKey</code> on every write your client might resend. The first execution stores its outcome; a resend with the same key and body replays it, so a network timeout after a successful insert cannot create a duplicate. A failed write rolls back completely, including side effects of table triggers, because the handler raises inside the <code>Codeunit.Run</code> boundary. A replay is not a bypass: it is checked against the policy in force at the moment of the resend, so a caller whose access was narrowed in between receives <code>403 replay-withheld</code>, which says the write <strong>did</strong> complete and must not be repeated under a new key (chapter 18).</p>
 <h2 id="23-invoke-and-action">23. invoke and action</h2>
@@ -2541,8 +2547,13 @@ Content-Type: application/json
 <td>Split it.</td>
 </tr>
 <tr>
+<td><code>batch-failed</code> · 422</td>
+<td>A <code>batch</code> preview stopped on an error that left no item-level problem; <code>detail</code> is the Business Central error text</td>
+<td>Read <code>detail</code>, fix the batch and preview again. Nothing was written.</td>
+</tr>
+<tr>
 <td><code>invalid-reference</code> · 400</td>
-<td>A batch <code>fromItem</code> naming a later item, a deleted record or an unknown field</td>
+<td>A batch <code>fromItem</code> naming a later item, a deleted record, an unknown field, or a field with no value to copy (FlowFilter, Blob, Media)</td>
 <td>Reference earlier items only; take the field name from <code>describe</code>.</td>
 </tr>
 <tr>
@@ -2716,7 +2727,7 @@ Content-Type: application/json
 <li>No events, webhooks or change push: poll with <code>modifiedAfter</code>.</li>
 <li>No joins or <code>$expand</code>: one table per call; follow <code>tableRelation</code> with a second query.</li>
 <li>No SQL passthrough; the filter language is the subset above.</li>
-<li>No bulk writes; one record per call.</li>
+<li>No set-based writes (no update or delete by filter): <code>insert</code>, <code>modify</code> and <code>delete</code> take one record each, and <code>batch</code> carries up to 100 such items in one call and one transaction.</li>
 <li>No streaming; page with <code>@nextLink</code> or deliver asynchronously.</li>
 <li>No raw binary download from <code>readBlob</code>; base64 in JSON, at most 10 MB.</li>
 <li>No reflection; only enrolled wrappers run.</li>
@@ -2733,7 +2744,7 @@ Content-Type: application/json
 <p><strong>Representative call:</strong></p>
 <pre data-lang="json"><code class="language-json">{ &quot;id&quot;: &quot;rep-1&quot;, &quot;issuedAt&quot;: &quot;2026-09-04T08:00:00Z&quot;, &quot;origin&quot;: &quot;reporting-agent&quot;,
   &quot;data&quot;: { &quot;tableId&quot;: 36, &quot;select&quot;: [&quot;No.&quot;, &quot;Sell-to Customer Name&quot;, &quot;Order Date&quot;, &quot;Status&quot;],
-            &quot;filter&quot;: &quot;\&quot;Document Type\&quot; eq &#39;Order&#39; and Status eq &#39;Open&#39;&quot;,
+            &quot;filter&quot;: &quot;\&quot;Document Type\&quot; eq 1 and Status eq 0&quot;,
             &quot;orderBy&quot;: [&quot;No. asc&quot;], &quot;top&quot;: 100 } }
 </code></pre>
 <p>Even if someone later assigned this principal a write-capable data set, the platform would still refuse <code>insert</code> because <code>Wicket - Read</code> holds no Execute on the write handlers, and Read-Only Mode would refuse it again.</p>
@@ -2974,9 +2985,14 @@ cp .env.example .env
 <td>Reads through one API page after a fresh governance check; see chapter 19. Not recorded in the Operation Log; the server writes one stderr line per read.</td>
 </tr>
 <tr>
+<td><code>wicket_batch</code></td>
+<td><code>batch</code></td>
+<td>Up to 100 inserts, modifies and deletes, across any tables, in one call and one transaction: every item is written or none. <code>preview: true</code> runs everything and rolls it back. A later item can use an earlier one&#39;s record (<code>{ fromItem, field }</code> as a value, <code>{ fromItem }</code> as a <code>recordId</code>). A failure names the item (<code>item</code>, <code>itemOp</code>). Returns <code>{ items: [ { index, op, recordId, @etag? } ], count }</code>.</td>
+</tr>
+<tr>
 <td><code>wicket_insert</code>, <code>wicket_modify</code>, <code>wicket_delete</code>, <code>wicket_invoke</code>, <code>wicket_action</code></td>
 <td>the write and execute planes</td>
-<td>Accept <code>idempotencyKey</code> (required by Wicket for <code>invoke</code> and <code>action</code> while Require Key For Actions is on). When an <code>invoke</code> or <code>action</code> call carries none, the server mints one and returns it as <code>@idempotencyKey</code>, so a call whose response was lost can be retried with the same key instead of posting twice, whatever the tenant&#39;s switch says. Marked destructive through MCP tool annotations so hosts prompt before running them.</td>
+<td>Accept <code>idempotencyKey</code> (required by Wicket for <code>invoke</code> and <code>action</code> while Require Key For Actions is on). When an <code>invoke</code>, <code>action</code> or <code>batch</code> call carries none, the server mints one and returns it as <code>@idempotencyKey</code>, so a call whose response was lost can be retried with the same key instead of posting twice, whatever the tenant&#39;s switch says. Marked destructive through MCP tool annotations so hosts prompt before running them.</td>
 </tr>
 <tr>
 <td><code>wicket_capabilities</code>, <code>wicket_page_url</code>, <code>wicket_whoami</code></td>
@@ -2989,6 +3005,11 @@ cp .env.example .env
 <td>The server does not poll; the agent does.</td>
 </tr>
 <tr>
+<td><code>wicket_changes</code></td>
+<td><code>changes</code></td>
+<td>The change history, newest first: what the agent created, changed or deleted through Wicket, and the actions and procedures it ran, each entry with old and new values per field as the field policy allows them. Filters: <code>from</code>, <code>to</code>, <code>tableId</code>, <code>kind</code>, <code>viaConnection</code>, <code>top</code> (default 20, at most 100), and <code>user</code> (needs <code>Wicket - Audit Changes</code>); follow <code>@nextLink</code> with <code>cursor</code>. The caller&#39;s own entries without that set. <code>403 changes-off</code> while the history is off or closed to the agent on the Setup card.</td>
+</tr>
+<tr>
 <td><code>wicket_connections</code>, <code>wicket_use</code></td>
 <td>local</td>
 <td>List connections; switch the session&#39;s active one. Prefer the per-call <code>connection</code> parameter.</td>
@@ -2996,7 +3017,7 @@ cp .env.example .env
 <tr>
 <td><code>wicket_setup</code></td>
 <td>local, Entra and Business Central&#39;s own APIs</td>
-<td>Guided setup behind <code>/wicket:setup</code>. Actions: <code>status</code>, <code>locate</code>, <code>signin</code>, <code>environments</code>, <code>companies</code>, <code>save</code>, <code>remove</code>, <code>setDefault</code>. A saved connection works at once.</td>
+<td>Guided setup behind <code>/wicket:setup</code>. Actions: <code>status</code>, <code>locate</code>, <code>signin</code>, <code>environments</code>, <code>companies</code>, <code>save</code>, <code>remove</code>, <code>setDefault</code>, <code>secretPage</code> (opens a one-time browser page where the user pastes an app&#39;s client secret into the system&#39;s secret store) and <code>moveAsideBroken</code> (renames an unreadable <code>connections.json</code>, on the user&#39;s yes). A saved connection works at once.</td>
 </tr>
 <tr>
 <td><code>wicket_skill</code></td>
@@ -3005,7 +3026,7 @@ cp .env.example .env
 </tr>
 </tbody></table></div>
 <p>The server sends the skill&#39;s essentials as MCP <code>instructions</code> at the handshake, so a host such as Claude Code places them in the session&#39;s system prompt before the first call; every tool carries a title and read-only/destructive annotations; a page of rows is rendered one row per line to keep results small. In Claude Code the simplest install is the <code>wicket</code> plugin (chapter 34), which brings the server, the skill and the <code>/wicket:setup</code>, <code>/wicket:orient</code> and <code>/wicket:inventory</code> commands in one step. Without it, the skill (<code>skills/wicket-usage/</code> in the plugin repository) is installed in Claude Code by placing it under <code>~/.claude/skills/</code> or <code>.claude/skills/</code>, or uploaded to claude.ai as a zip under Customize › Skills, from where it also syncs into Claude Code and Cowork.</p>
-<p>Every BC-touching tool accepts <code>connection: &quot;&lt;name&gt;&quot;</code>. A problem document is returned as an MCP tool error with the full RFC 7807 body, so the agent sees <code>detail</code> and <code>suggest</code>. A connection marked <code>readOnly: true</code> refuses the five mutating tools with <code>403 connection-read-only</code> before a token is minted; this complements, and does not replace, Wicket&#39;s Read-Only Mode and the permission sets.</p>
+<p>Every BC-touching tool accepts <code>connection: &quot;&lt;name&gt;&quot;</code>. A problem document is returned as an MCP tool error with the full RFC 7807 body, so the agent sees <code>detail</code> and <code>suggest</code>. A connection marked <code>readOnly: true</code> refuses the six mutating tools (<code>wicket_insert</code>, <code>wicket_modify</code>, <code>wicket_delete</code>, <code>wicket_batch</code>, <code>wicket_invoke</code>, <code>wicket_action</code>) with <code>403 connection-read-only</code> before a token is minted, except a call that runs inside the forced rollback (a <code>preview: true</code> batch or action, a non-mutating action); this complements, and does not replace, Wicket&#39;s Read-Only Mode and the permission sets.</p>
 <p>When a call&#39;s answer is lost (a timeout, or a 5xx from the gateway), the server&#39;s problem says what to do next according to the call: a read is safe to retry; a write sent with an <code>idempotencyKey</code> is resent with the same key (it replays, or answers <code>idempotency-in-progress</code> / <code>idempotency-indeterminate</code>); a write sent without one must not be blindly retried: query the affected records first.</p>
 <hr class="part-break">
 <h1 class="part" id="appendices">Appendices</h1>
@@ -3114,6 +3135,24 @@ cp .env.example .env
 <td>Empty sentinel table; write rights granted only by <code>Wicket - Unmask</code></td>
 </tr>
 <tr>
+<td>Table</td>
+<td>94115</td>
+<td>Bcmag Change Entry</td>
+<td>Change history header: one row per record created, changed or deleted, or per action or procedure run</td>
+</tr>
+<tr>
+<td>Table</td>
+<td>94116</td>
+<td>Bcmag Field Change</td>
+<td>One changed field of a change entry: old and new value as the field policy showed them</td>
+</tr>
+<tr>
+<td>Table</td>
+<td>94117</td>
+<td>Bcmag Changes Gate</td>
+<td>Empty sentinel table; write rights granted only by <code>Wicket - Audit Changes</code> (and the sets that include it)</td>
+</tr>
+<tr>
 <td>Page</td>
 <td>94101</td>
 <td>Bcmag Setup Card</td>
@@ -3166,6 +3205,12 @@ cp .env.example .env
 <td>94109–94111</td>
 <td>Bcmag Classification Rules, Mask Profiles, Access Exceptions</td>
 <td>Field policy rules, profiles and exceptions</td>
+</tr>
+<tr>
+<td>Page</td>
+<td>94112, 94113</td>
+<td>Bcmag Changes, Bcmag Field Changes</td>
+<td>The Wicket Changes page and its changed-fields part</td>
 </tr>
 <tr>
 <td>Codeunit</td>
@@ -3259,6 +3304,12 @@ cp .env.example .env
 </tr>
 <tr>
 <td>Codeunit</td>
+<td>94149</td>
+<td>Bcmag Api Catalog</td>
+<td>The tenant&#39;s API pages and queries, read from platform metadata (<code>discover kind:&quot;apis&quot;</code>, <code>describe kind:&quot;api&quot;</code>)</td>
+</tr>
+<tr>
+<td>Codeunit</td>
 <td>94150–94152</td>
 <td>Bcmag Policy Defaults, Field Masker, Hash Key</td>
 <td>Shipped field-policy posture, mask rendering, the tenant HMAC key</td>
@@ -3283,9 +3334,9 @@ cp .env.example .env
 </tr>
 <tr>
 <td>Codeunit</td>
-<td>94190</td>
-<td>Bcmag Wrap Ping</td>
-<td>Sample invoke wrapper</td>
+<td>94156</td>
+<td>Bcmag App Info</td>
+<td>Which installed app owns an object (<code>app</code> in <code>discover</code> and <code>describe</code>), the publisher filter, <code>structureVersion</code></td>
 </tr>
 <tr>
 <td>Codeunit</td>
@@ -3294,10 +3345,52 @@ cp .env.example .env
 <td>The forced-rollback boundary for previews and non-mutating verbs</td>
 </tr>
 <tr>
+<td>Codeunit</td>
+<td>94158</td>
+<td>Bcmag Change Recorder</td>
+<td>Writes the change history in the same transaction as the change</td>
+</tr>
+<tr>
+<td>Codeunit</td>
+<td>94159</td>
+<td>Bcmag Op Changes</td>
+<td>The <code>changes</code> handler</td>
+</tr>
+<tr>
+<td>Codeunit</td>
+<td>94160–94162</td>
+<td>Bcmag Op Batch, Batch Rollback, Batch Context</td>
+<td>The <code>batch</code> handler, the forced-rollback boundary of its preview, and the state carried across it</td>
+</tr>
+<tr>
+<td>Codeunit</td>
+<td>94190</td>
+<td>Bcmag Wrap Ping</td>
+<td>Sample invoke wrapper</td>
+</tr>
+<tr>
 <td>Codeunit (companion)</td>
 <td>94200, 94202, 94203, 94204</td>
 <td>Bcmag Act Post …</td>
 <td>Posting wrappers</td>
+</tr>
+<tr>
+<td>Codeunit (companion)</td>
+<td>94201, 94206</td>
+<td>Bcmag Act Install, Bcmag Act Upgrade</td>
+<td>Enrol the wrappers and actions (disabled); on upgrade refresh the companion-owned fields of existing rows</td>
+</tr>
+<tr>
+<td>Codeunit (companion)</td>
+<td>94205</td>
+<td>Bcmag Act New Company</td>
+<td>Enrols the same rows in a company created later</td>
+</tr>
+<tr>
+<td>Codeunit (companion)</td>
+<td>94210</td>
+<td>Bcmag Act Helper</td>
+<td>Shared argument parsing for the wrappers</td>
 </tr>
 <tr>
 <td>Codeunit (companion)</td>
@@ -3348,6 +3441,12 @@ cp .env.example .env
 <td>The unmask tier</td>
 </tr>
 <tr>
+<td>Permission set</td>
+<td>94113</td>
+<td>Wicket - Audit Changes (object name <code>Wicket - Changes</code>)</td>
+<td>Every principal&#39;s change history; included in Audit and Admin</td>
+</tr>
+<tr>
 <td>Permission set (companion)</td>
 <td>94200</td>
 <td>Wicket Act</td>
@@ -3383,6 +3482,24 @@ cp .env.example .env
 <td>yes</td>
 </tr>
 <tr>
+<td>changes (the caller&#39;s own entries)</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>changes with <code>user</code> (every user&#39;s entries)</td>
+<td>no</td>
+<td>no</td>
+<td>no</td>
+<td>yes</td>
+<td>no</td>
+<td>no</td>
+</tr>
+<tr>
 <td>invoke, action</td>
 <td>no</td>
 <td>yes</td>
@@ -3392,7 +3509,7 @@ cp .env.example .env
 <td>yes</td>
 </tr>
 <tr>
-<td>insert, modify, delete</td>
+<td>insert, modify, delete, batch</td>
 <td>no</td>
 <td>no</td>
 <td>yes</td>
@@ -3419,6 +3536,7 @@ cp .env.example .env
 <td>no</td>
 </tr>
 </tbody></table></div>
+<p><code>Wicket - Audit Changes</code>, alone or through <code>Wicket - Audit</code>, also opens the <code>user</code> filter of <code>changes</code> for a caller that holds a data-plane rung.</p>
 <h2 id="c-common-business-central-table-ids">C. Common Business Central table ids</h2>
 <div class="table-wrap"><table><thead><tr>
 <th>Id</th>
@@ -3561,7 +3679,7 @@ cp .env.example .env
 </tr>
 </tbody></table></div>
 </article>
-    <footer class="colophon">Wicket Product Guide · generated from <code>docs/Wicket-Product-Guide.md</code> · guide version 2026-10-28 · the endpoint's <code>capabilities</code> is authoritative when this text and the tenant disagree.</footer>
+    <footer class="colophon">Wicket Product Guide · generated from <code>docs/Wicket-Product-Guide.md</code> · guide version 2026-11-09 · the endpoint's <code>capabilities</code> is authoritative when this text and the tenant disagree.</footer>
   </main>
 </div>
 <script>(function () {

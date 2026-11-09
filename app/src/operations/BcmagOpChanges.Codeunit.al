@@ -81,6 +81,7 @@ codeunit 94159 "Bcmag Op Changes"
     var
         ProfileCode: Code[20];
         Now: Enum "Bcmag Read Access";
+        FieldType: FieldType;
     begin
         Now := Policy.StrictReadVerdict(TableId, FieldNo, ProfileCode);
         Shown := StoredAs;
@@ -93,11 +94,39 @@ codeunit 94159 "Bcmag Op Changes"
                     NewText := '';
                 end;
             Shown::Masked:
-                if StoredAs = StoredAs::Clear then begin
-                    if OldText <> '' then OldText := Masker.MaskText(OldText, ProfileCode);
-                    if NewText <> '' then NewText := Masker.MaskText(NewText, ProfileCode);
-                end;
+                if StoredAs = StoredAs::Masked then begin
+                    if FieldTypeOf(TableId, FieldNo, FieldType) then begin
+                        OldText := Masker.KeepStoredMask(OldText, FieldType, ProfileCode);
+                        NewText := Masker.KeepStoredMask(NewText, FieldType, ProfileCode);
+                    end;
+                end else
+                    if not FieldTypeOf(TableId, FieldNo, FieldType) then begin
+                        // The field is gone: nothing says how a read would render it, so show nothing.
+                        OldText := '';
+                        NewText := '';
+                    end else begin
+                        if OldText <> '' then OldText := Masker.MaskStoredText(OldText, FieldType, ProfileCode);
+                        if NewText <> '' then NewText := Masker.MaskStoredText(NewText, FieldType, ProfileCode);
+                    end;
         end;
+    end;
+
+    local procedure FieldTypeOf(TableId: Integer; FieldNo: Integer; var FieldType: FieldType): Boolean
+    var
+        RecRef: RecordRef;
+    begin
+        if not TryOpen(RecRef, TableId) then
+            exit(false);
+        if not RecRef.FieldExist(FieldNo) then
+            exit(false);
+        FieldType := RecRef.Field(FieldNo).Type();
+        exit(true);
+    end;
+
+    [TryFunction]
+    local procedure TryOpen(var RecRef: RecordRef; TableId: Integer)
+    begin
+        RecRef.Open(TableId);
     end;
 
     local procedure ApplyFilters(Data: JsonObject; SeeEveryone: Boolean; var Entry: Record "Bcmag Change Entry"; var Top: Integer; var Fail: JsonObject): Boolean
@@ -180,6 +209,8 @@ codeunit 94159 "Bcmag Op Changes"
     local procedure ProjectEntry(var Entry: Record "Bcmag Change Entry"; var Policy: Codeunit "Bcmag Field Policy") Obj: JsonObject
     var
         FieldChange: Record "Bcmag Field Change";
+        Exposure: Record "Bcmag Exposure";
+        TableReadable: Boolean;
         Fields: JsonArray;
         Line: JsonObject;
         OldText, NewText : Text;
@@ -203,6 +234,7 @@ codeunit 94159 "Bcmag Op Changes"
         end;
         Obj.Add('fieldCount', Entry."Field Count");
 
+        TableReadable := Exposure.IsAllowed(Exposure."Object Type"::Table, Entry."Table Id", 'read');
         FieldChange.SetRange("Entry No.", Entry."Entry No.");
         if FieldChange.FindSet() then
             repeat
@@ -210,6 +242,10 @@ codeunit 94159 "Bcmag Op Changes"
                 OldText := FieldChange."Old Value";
                 NewText := FieldChange."New Value";
                 Shown := ShownAs(Policy, Entry."Table Id", FieldChange."Field No.", FieldChange."Stored As", OldText, NewText);
+                // The agent reads values here: a table that is no longer exposed for read (or was only
+                // ever exposed for write) shows which fields changed and nothing more.
+                if not TableReadable then
+                    Shown := Shown::Hidden;
                 Line.Add('fieldNo', FieldChange."Field No.");
                 Line.Add('fieldName', FieldChange."Field Name");
                 Line.Add('shownAs', ShownName(Shown));

@@ -35,6 +35,13 @@ codeunit 94202 "Bcmag Act Post Purchase Doc"
     begin
         Args := Ctx.GetArgs();
         ResolveHeader(Args, Helper, PurchHeader);
+        // Purch.-Post has no document type guard of its own: a quote handed to it would post as an invoice.
+        if PurchHeader."Document Type" in [PurchHeader."Document Type"::Quote, PurchHeader."Document Type"::"Blanket Order"] then
+            Error('a purchase %1 cannot be posted; turn it into an order or invoice first', DocTypeName(PurchHeader."Document Type"));
+        // The check the Post action on the pages makes before calling the poster (approval workflow
+        // enabled and the document not approved, unpaid prepayments); a preview meets it too.
+        if not PurchHeader.IsApprovedForPosting() then
+            Error('purchase %1 %2 is not approved for posting', DocTypeName(PurchHeader."Document Type"), PurchHeader."No.");
         // A purchase return order SHIPS back (Purch.-Post forces Receive off for it).
         IsReturn := PurchHeader."Document Type" = PurchHeader."Document Type"::"Return Order";
         PurchHeader.Receive := Helper.GetBool(Args, 'receive', not IsReturn);
@@ -167,6 +174,14 @@ codeunit 94202 "Bcmag Act Post Purchase Doc"
                 Error('args.systemId "%1" is not a valid GUID', SysIdTxt);
             if not PurchHeader.GetBySystemId(SysId) then
                 Error('no purchase header with systemId %1', SysIdTxt);
+            // A systemId wins, but never silently over a documentType or no that names another document:
+            // a stale target beside a fresh number must not act on the stale one.
+            if Helper.GetText(Args, 'no', NoTxt) then
+                if UpperCase(NoTxt) <> PurchHeader."No." then
+                    Error('args.systemId names purchase document %1, but args.no is "%2"; send one of them, or two that agree', PurchHeader."No.", NoTxt);
+            if Helper.GetText(Args, 'documentType', DocTypeTxt) then
+                if ParseDocType(DocTypeTxt) <> PurchHeader."Document Type" then
+                    Error('args.systemId names purchase document %1, which is not a %2; send one of them, or two that agree', PurchHeader."No.", DocTypeTxt);
             exit;
         end;
         if Helper.GetText(Args, 'no', NoTxt) then begin

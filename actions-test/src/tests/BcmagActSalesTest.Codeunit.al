@@ -42,6 +42,50 @@ codeunit 94351 "Bcmag Act Sales Test"
     end;
 
     [Test]
+    procedure QuoteIsNotPosted()
+    var
+        SalesHeader: Record "Sales Header";
+        Args, Response: JsonObject;
+        CustNo, GLAccNo, QuoteNo: Code[20];
+        Status: Integer;
+    begin
+        // Sales-Post has no guard of its own: handed a quote it would post it as an invoice.
+        Helper.Initialize();
+        Helper.FindSalesFixture(CustNo, GLAccNo);
+        Helper.CreateSalesDoc("Sales Document Type"::Quote, CustNo, GLAccNo, SalesHeader);
+        QuoteNo := SalesHeader."No.";
+
+        Response := Helper.RunAction(Helper.ActionData(PostSalesTok, SalesHeader.SystemId, Args), '', Status);
+
+        LibraryAssert.AreEqual(422, Status, 'a quote is refused: ' + Helper.Describe(Response));
+        LibraryAssert.IsTrue(StrPos(Helper.Txt(Response, 'detail'), 'cannot be posted') > 0, 'and says why: ' + Helper.Describe(Response));
+        LibraryAssert.IsTrue(SalesHeader.Get(SalesHeader."Document Type"::Quote, QuoteNo), 'the quote is untouched');
+    end;
+
+    [Test]
+    procedure SystemIdAndNumberMustNameTheSameDocument()
+    var
+        SalesHeader, Other: Record "Sales Header";
+        Args, Response: JsonObject;
+        CustNo, GLAccNo: Code[20];
+        Status: Integer;
+    begin
+        // A stale target beside a fresh number must not post the stale document.
+        Helper.Initialize();
+        Helper.FindSalesFixture(CustNo, GLAccNo);
+        Helper.CreateSalesDoc("Sales Document Type"::Invoice, CustNo, GLAccNo, SalesHeader);
+        Helper.CreateSalesDoc("Sales Document Type"::Invoice, CustNo, GLAccNo, Other);
+        Args.Add('documentType', 'Invoice');
+        Args.Add('no', Other."No.");
+
+        Response := Helper.RunAction(Helper.ActionData(PostSalesTok, SalesHeader.SystemId, Args), '', Status);
+
+        LibraryAssert.AreEqual(422, Status, 'a conflicting address is refused: ' + Helper.Describe(Response));
+        LibraryAssert.IsTrue(SalesHeader.Get(SalesHeader."Document Type"::Invoice, SalesHeader."No."), 'the document named by systemId is not posted');
+        LibraryAssert.IsTrue(Other.Get(Other."Document Type"::Invoice, Other."No."), 'nor the one named by number');
+    end;
+
+    [Test]
     procedure SalesOrderShipThenInvoiceReportsEachPhaseOnce()
     var
         SalesHeader: Record "Sales Header";

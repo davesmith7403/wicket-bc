@@ -2,7 +2,7 @@
   "id": "a258283d-1999-440b-b6d7-b4490b92ec76",
   "name": "Wicket Actions - Base",
   "publisher": "Dave The Wicketkeeper",
-  "version": "0.3.0.0",
+  "version": "0.3.1.0",
   "brief": "Base-App action providers for Wicket — post documents and journals",
   "description": "Companion to Wicket. Depends on the Base Application to own the strongly-typed posting calls (Sales-Post, Purch.-Post, journal batch posts, ...) that a System-Application-only extension cannot make, and exposes them through Wicket's invoke plane as enrolled, deny-by-default action wrappers.",
   "platform": "26.0.0.0",

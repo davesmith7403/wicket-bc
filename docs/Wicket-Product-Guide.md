@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| Product | Wicket 1.3 (publisher Dave The Wicketkeeper) with the optional companion `Wicket Actions - Base` 0.3 and the `wicket-mcp` server 2.4 |
+| Product | Wicket 1.4 (publisher Dave The Wicketkeeper) with the optional companion `Wicket Actions - Base` 0.3 and the `wicket-mcp` server 2.6 |
 | Platform | Business Central 26 and later, SaaS (online). AL runtime 16.0. The core app depends on the System Application only. |
-| Guide version | 2026-10-28 |
+| Guide version | 2026-11-09 |
 | Audience | Part I is for everyone. Parts II and III are for the Business Central administrator or consultant who installs and configures Wicket. Parts IV to VI are for the developer or agent builder who calls it. |
 
 This guide is the complete manual. It explains what Wicket is, how to install and secure it, how to take the first calls, and how to use every operation, with worked configuration examples for the deployments people actually run. The runtime is always the final authority: `capabilities` and `describe` report what a given tenant exposes right now, and when this text and the endpoint disagree, the endpoint is right.
@@ -48,8 +48,10 @@ codeunit "Bcmag Rpc Dispatcher"      envelope validation · key rule · idempote
 codeunit "Bcmag Op Runner"           gates (Read-Only Mode, then the role rung), then one handler:
    ├─ discover · describe · query (+aggregate) · readBlob · capabilities · skill · pageUrl · whoAmI
    ├─ insert · modify · delete       Value Coercer + Record Access (etag, security filter)
+   ├─ batch                          many of those three in one transaction, all or nothing
    ├─ invoke · action                Procedure Catalog / Action Catalog → wrapper codeunit
-   └─ status · cancel · requests     Request Queue (async delivery)
+   ├─ status · cancel · requests     Request Queue (async delivery)
+   └─ changes                        Change Entry / Field Change (the change history)
 ```
 
 Every field a handler touches passes through the **field policy**; every table passes through **exposure**; every record re-fetch runs under the caller's **security filter**. A `query` that carries a `deliver` block never runs inline: the dispatcher writes a durable queue row and a background worker produces the package later.
@@ -111,7 +113,7 @@ The planes are not just documentation: the shipped permission sets grant Execute
 ## 4. Security model in one page
 
 - **Exposure list.** Table `Bcmag Exposure` holds one row per table or codeunit with `Allow Read / Insert / Modify / Delete / Invoke`. In the default mode, **Exposed tables only** (API name `Allowlisted`), a table without a row is invisible. `Open` mode (for sandboxes) allows any table the principal's BC permissions allow, but never `invoke` unless the separate `Allow Invoke In Open Mode` switch is set.
-- **Read-Only Mode.** One switch on the setup card refuses every mutating operation (`insert`, `modify`, `delete`, `invoke`, `action`) before any other check. The exceptions are an action preview and a verb enrolled as non-mutating: both run inside a forced rollback that undoes their writes in Business Central (chapter 12 lists the limits). They can still **read and return** data: like every action they bypass the exposure list and the field policy, so on a read-only endpoint an enabled `document-pdf` serves any document's PDF and a posting preview returns amounts. Enable those verbs there only for principals who may see that, or mark them mutating to keep them off read-only.
+- **Read-Only Mode.** One switch on the setup card refuses every mutating operation (`insert`, `modify`, `delete`, `batch`, `invoke`, `action`) before any other check. The exceptions are an action preview, a verb enrolled as non-mutating and a `batch` sent with `preview: true`: each runs inside a forced rollback that undoes its writes in Business Central (chapter 12 lists the limits for actions). The first two can still **read and return** data: like every action they bypass the exposure list and the field policy, so on a read-only endpoint an enabled `document-pdf` serves any document's PDF and a posting preview returns amounts. Enable those verbs there only for principals who may see that, or mark them mutating to keep them off read-only.
 - **Field policy.** Business Central has no column-level security, so Wicket decides per field whether it may be read or written, on every surface that names a field. Each field resolves to Hidden, Masked or Clear. Three modes: `AllFields`, `ByClassification` (the fresh-install default: `CustomerContent` and `SystemMetadata` are Clear, `EUII` and `EUPI` are Masked, everything else is Hidden until an administrator decides) and `Explicit` (a field is Hidden unless it has a row). A caller holding `Wicket - Unmask`, or a per-user exception, can see Masked fields in clear.
 - **Catalog enrolment.** `invoke` runs only wrappers enrolled in the Procedure Catalog with `Allow Run`; `action` additionally needs an enabled Action Catalog row. There is no reflection over arbitrary AL methods.
 - **Permission-set ladder.** `Wicket - Read` → `Wicket - Execute` → `Wicket - Edit` for callers, `Wicket - Audit` and `Wicket - Admin` for humans, and two generic data sets, `Wicket Data - Read` and `Wicket Data - Exec`. Each rung is the only grant of Execute on its handler codeunits and of write rights on one empty role-gate table (`Bcmag Execute Gate` from Execute up, `Bcmag Write Gate` from Edit up); the dispatcher checks the gate before routing, so the plane is enforced per principal even against a codeunit wildcard held elsewhere, and a refusal is a typed `403 role-forbidden` with no side effects.
@@ -151,7 +153,7 @@ alc /project:./app     /packagecachepath:./.alpackages /out:Wicket.app
 alc /project:./actions /packagecachepath:./actions/.alpackages /out:Wicket_Actions_Base.app
 ```
 
-In VS Code open the `app/` folder (not the repository root), copy `app/.vscode/launch.json.example` to `launch.json` with your tenant and sandbox name, and press F5. The repository also carries an AL-Go pipeline that builds all three apps and runs the test suite in a BC 26 container on every push.
+In VS Code open the `app/` folder (not the repository root), copy `app/.vscode/launch.json.example` to `launch.json` with your tenant and sandbox name, and press F5. The repository also carries an AL-Go pipeline that builds all four apps (the core, the companion and their two test apps) and runs both test suites in a BC 26 container on every push.
 
 ### What installation does
 
@@ -221,7 +223,7 @@ Wicket ships its permission sets as composable AL objects. Assign exactly **one 
 
 | Permission set | Who gets it | What it allows |
 |---|---|---|
-| `Wicket - Read` | A read-only agent | `discover`, `describe`, `query` (including aggregates and async delivery), `readBlob`, `capabilities`, `skill`, `pageUrl`, `whoAmI`, and its own `status` / `requests` / `cancel`. Writes only its own audit rows and queue rows. |
+| `Wicket - Read` | A read-only agent | `discover`, `describe`, `query` (including aggregates and async delivery), `readBlob`, `capabilities`, `skill`, `pageUrl`, `whoAmI`, its own `status` / `requests` / `cancel`, and `changes` for its own entries. Writes only its own audit rows, queue rows and change history entries. |
 | `Wicket - Execute` | An agent that may run enrolled business logic | Everything in Read plus `invoke` and `action`. The generic write plane stays closed. |
 | `Wicket - Edit` | A full read/write agent | Everything in Execute plus `insert`, `modify`, `delete`, `batch`. |
 | `Wicket - Audit` | Support, security review | Opens every Wicket admin page and reads every Wicket table, including the logs, the request queue and the change history (it includes `Wicket - Audit Changes`). Cannot change anything, purge logs or enter credentials. |
@@ -274,7 +276,7 @@ Every preset except Developer Sandbox leaves the field policy and masking as the
 
 | Field | Default | Meaning |
 |---|---|---|
-| Read-Only Mode | off | Refuses `insert`, `modify`, `delete`, `invoke` and mutating `action` calls for every caller, before any other check. Action previews and verbs enrolled non-mutating still run, inside a forced rollback (chapter 12); they can return data, so mark such a verb mutating to keep it off a read-only endpoint. Turn it on for a tenant that must never be written to through Wicket. |
+| Read-Only Mode | off | Refuses `insert`, `modify`, `delete`, `batch`, `invoke` and mutating `action` calls for every caller, before any other check. Action previews, a `batch` with `preview: true` and verbs enrolled non-mutating still run, inside a forced rollback (chapter 12); they can return data, so mark such a verb mutating to keep it off a read-only endpoint. Turn it on for a tenant that must never be written to through Wicket. |
 | Mode | Exposed tables only | **Exposed tables only** (API name `Allowlisted`) honours the exposure table. `Open` allows read and write on any table the principal's BC permissions allow; use it in sandboxes only. |
 | Allow Invoke In Open Mode | off | Even in `Open` mode `invoke` stays deny-by-default unless this is on. |
 | Default Languages | `en-US` | Comma-separated culture tags used for `captionML` when a request passes no `languages`. |
@@ -362,7 +364,7 @@ Search **Wicket Exposure**. One row per object.
 
 Rules the table enforces regardless of what you enter:
 
-- Wicket's own tables (94100–94199) can never be written through the data plane, in any mode. The Operation Log, the Idempotency Log, the Idempotency Reservation and the Request Queue can never be read through it either, because they hold every principal's rows; neither can the Access Exceptions (each user's grants and reasons) or the Field Exposure rows (which would name every field an administrator hid, while `describe` keeps a hidden field indistinguishable from a missing one). `discover` does not list them, in `Open` mode included. Setup, Exposure, the catalogs, the Classification Rules and the Mask Profiles remain readable as fixtures; `capabilities` publishes the rules and profiles anyway.
+- Wicket's own tables (94100–94199) can never be written through the data plane, in any mode. The Operation Log, the Idempotency Log, the Idempotency Reservation and the Request Queue can never be read through it either, because they hold every principal's rows; the same holds for the change history (Change Entry and Field Change, with the Changes Gate), which the Wicket Changes page and the caller-scoped `changes` operation read instead. Neither can the Access Exceptions (each user's grants and reasons) or the Field Exposure rows (which would name every field an administrator hid, while `describe` keeps a hidden field indistinguishable from a missing one). `discover` does not list them, in `Open` mode included. Setup, Exposure, the catalogs, the Classification Rules and the Mask Profiles remain readable as fixtures; `capabilities` publishes the rules and profiles anyway.
 - A row grants nothing the principal's Business Central permissions do not also grant. `describe` reports the effective `permissions` per table.
 - `discover` lists only tables that are exposed and readable by the caller, so an agent sees exactly the surface you opened.
 
@@ -565,7 +567,7 @@ Enabling an action grants whatever its wrapper does, independent of the exposure
 | `document-pdf` | `DocumentPdf` | 94218 | `document` (`salesQuote`, `salesOrder`, `salesInvoice`, `postedSalesInvoice`, `postedSalesCreditMemo`, `postedSalesShipment`, `purchaseQuote`, `purchaseOrder`, `postedPurchaseInvoice`, `postedPurchaseCreditMemo`); `systemId` or `no` |
 | `item-availability` | `ItemAvailability` | 94219 | `itemNo`; `locationCode`, `variantCode`, `date` (default the work date), `quantity` |
 
-The four posting verbs accept `preview: true` (chapter 23). `document-pdf` and `item-availability` are enrolled with **Is Mutating** off: they run inside the forced rollback, so a report that stamps *No. Printed* leaves no trace, they work on a read-only endpoint and they need no idempotency key. The quote conversions take the same path as **Make Order** / **Make Invoice** on the quote page: the customer or vendor is checked, the lines are copied, the quote is archived when the setup says so and then deleted. A sales quote tied to an opportunity in progress is refused, because Business Central would open the *Close Opportunity* page there. Release and reopen take the same path as the Release and Reopen actions on the document page, so the approval workflow and prepayment rules apply: a document pending approval can be neither released nor reopened, and a sales or purchase order with an unpaid prepayment becomes *Pending Prepayment* instead of released.
+The four posting verbs accept `preview: true` (chapter 23). `post-sales` and `post-purchase` make the checks the **Post** action on the document page makes before it posts: a document that an enabled approval workflow has not approved, or one with unpaid prepayments, is refused (a preview too), and a quote or blanket order is never posted. The quote conversions make the approval check of the quote page. When `systemId` is sent together with `documentType` or `no`, they must name the same document. `document-pdf` and `item-availability` are enrolled with **Is Mutating** off: they run inside the forced rollback, so a report that stamps *No. Printed* leaves no trace, they work on a read-only endpoint and they need no idempotency key. The quote conversions take the same path as **Make Order** / **Make Invoice** on the quote page: the customer or vendor is checked, the lines are copied, the quote is archived when the setup says so and then deleted. A sales quote tied to an opportunity in progress is refused, because Business Central would open the *Close Opportunity* page there. Release and reopen take the same path as the Release and Reopen actions on the document page, so the approval workflow and prepayment rules apply: a document pending approval can be neither released nor reopened, and a sales or purchase order with an unpaid prepayment becomes *Pending Prepayment* instead of released.
 
 The journal wrappers call the batch-posting codeunits directly (the interactive front ends would ask questions or, with *Post with Job Queue*, only schedule the post), but they apply the same business refusals those front ends apply first: a template with **Force Posting Report** must be posted through its report, and a Jobs general-journal template whose Source Code is Source Code Setup's **Job G/L WIP** code is refused (those lines belong to the WIP process). Results are described in chapter 23.
 
@@ -955,7 +957,7 @@ For a codeunit: `{ codeunitId, name, schemaVersion, procedures: [ { procedure, r
 { "data": { "kind": "api", "pageId": 30009 } }
 ```
 
-For an API page (`pageId`, or `queryId` for an API query): the catalog row plus `sourceTableView`, `fields: [ { name, mapped, fieldNo?, tableId?, readable } ]`, `routable`, `notRoutableReason?` and `catalogVersion`. Each API field names the table field it is bound to; one with `mapped: false` is computed by the API's own code and is never `readable`, because the field policy cannot judge it. `routable` is true only when API Routing is `Prefer` and Wicket would let the caller read the source table (exposure list, BC permissions); otherwise `notRoutableReason` says `routing-off`, `not-exposed` or, for an API query, `no-field-mapping`. The answer does not refuse a table the caller may not read (the API's shape is public); it answers `routable: false`. These governance answers follow the policy as it is now, so a client asks again before every API read. `sourceTableView` matters when choosing: an API may cover only part of its table (sales orders but not quotes, say). An id that is not an API page is `404 unknown-api`.
+For an API page (`pageId`, or `queryId` for an API query): the catalog row plus `sourceTableView`, `fields: [ { name, mapped, fieldNo?, tableId?, readable } ]`, `routable`, `notRoutableReason?` and `catalogVersion`. Each API field names the table field it is bound to; one with `mapped: false` is computed by the API's own code and is never `readable`, because the field policy cannot judge it. `routable` is true only when API Routing is `Prefer` and Wicket would let the caller read the source table (exposure list, BC permissions); otherwise `notRoutableReason` says `routing-off`, `not-exposed`, `temporary-source` (the page's source table is temporary: its code fills the fields from other tables, so the field policy cannot judge them) or, for an API query, `no-field-mapping`. The answer does not refuse a table the caller may not read (the API's shape is public); it answers `routable: false`. These governance answers follow the policy as it is now, so a client asks again before every API read. `sourceTableView` matters when choosing: an API may cover only part of its table (sales orders but not quotes, say). An id that is not an API page is `404 unknown-api`.
 
 ### Reading through an API (MCP)
 
@@ -967,7 +969,7 @@ For an API page (`pageId`, or `queryId` for an API query): the catalog row plus 
 { "data": {
     "tableId": 18,
     "select":  ["No.", "Name", "Balance (LCY)"],
-    "filter":  "\"Balance (LCY)\" gt 1000 and Blocked eq ' '",
+    "filter":  "\"Balance (LCY)\" gt 1000 and Blocked eq 0",
     "orderBy": ["Name asc"],
     "top":     50,
     "include": { "flowFields": true },
@@ -998,9 +1000,10 @@ How values arrive: Text and Code values verbatim (a Text value's leading and tra
 
 | You want | Write |
 |---|---|
-| Equality, inequality | `Status eq 'Open'`, `Status ne 'Closed'` |
+| Equality, inequality | `City eq 'London'`, `City ne 'London'` |
+| Option or Enum field | By ordinal: `"Document Type" eq 1`, `Status eq 0`. Take the ordinal from `describe` (`optionMembers[].ord`). |
 | Numeric, date, datetime comparison | `Balance gt 1000`, `"Posting Date" ge 2026-01-01`, `SystemModifiedAt gt 2026-01-01T00:00:00Z` |
-| AND chaining | `Country eq 'US' and Blocked eq ' ' and Balance gt 0` |
+| AND chaining | `Country eq 'US' and Blocked eq 0 and Balance gt 0` |
 | Same-field OR | `"No." in ('C-1','C-2','C-3')` (at most 20 members, comma-separated, no trailing comma, no `null`) |
 | Prefix, suffix, substring | `startswith(Name,'Acme')`, `endswith(Name,'ltd')`, `contains(Name,'co')` |
 | Blank, non-blank | `"VAT Registration No." eq null`, `ne null` |
@@ -1009,7 +1012,7 @@ How values arrive: Text and Code values verbatim (a Text value's leading and tra
 | Field name with spaces or punctuation | `"Customer Posting Group" eq 'DOMESTIC'` |
 | Field by number | `#22 gt 1000` |
 
-Not supported, with specific errors: cross-field `or`, standalone `not`, arithmetic, lambdas, casts. Comparisons and `in()` are exact (a `*` is a literal star). Each `in()` member is converted to a typed value by its literal kind (numbers, dates and date-times parsed invariantly, as in a single comparison), so `Amount in (1.5, 2.5)` means the same under every regional setting. A missing or trailing comma, or `null`, inside `in()` is `400 invalid-filter`; test for blank with `eq null`. Inside `startswith`, `endswith` and `contains`, `*` and `?` are live Business Central wildcards. Option fields take the member name as a string, and the blank `Blocked` state is a single space.
+Not supported, with specific errors: cross-field `or`, standalone `not`, arithmetic, lambdas, casts. Comparisons and `in()` are exact (a `*` is a literal star). Each `in()` member is converted to a typed value by its literal kind (numbers, dates and date-times parsed invariantly, as in a single comparison), so `Amount in (1.5, 2.5)` means the same under every regional setting. A missing or trailing comma, or `null`, inside `in()` is `400 invalid-filter`; test for blank with `eq null`. Inside `startswith`, `endswith` and `contains`, `*` and `?` are live Business Central wildcards. Filter an Option or Enum field by its ordinal, not by a member name: Business Central reads a name in the session language, so `Status eq 'Open'` works on an English session and matches nothing, or is refused, on another. `describe` lists each member's `ord`; the blank `Blocked` member is ordinal 0.
 
 ### Paging
 
@@ -1117,7 +1120,7 @@ Same concurrency rules. Result: `{ deleted: true, recordId }`.
 
 Up to 100 items (`limits.maxBatchItems`), any tables, each in the shape of `insert`, `modify` or `delete` plus `op`. Every item runs through the same handler as a single write, so exposure, the field policy, validation, the etag check and the change history apply to each; the items run in one transaction, with explicit commits inside table triggers ignored, so **all are written or none**. The first failing item stops the batch: the problem is that item's own (`400`, `403`, `412`, `422` …) with the extension members `item` (its index) and `itemOp`, and a `detail` starting `items[1] (insert, table 37): `; nothing is written. `preview: true` runs every item inside a forced rollback and answers the per-item results (their recordIds and etags describe records that no longer exist) or the first failure; it is allowed in Read-Only Mode.
 
-A value `{ "fromItem": n, "field": "<name>" }` (or `"fieldNo"`) is that field of the record item n wrote, read after it ran — the header's number in the example above. `recordId: { "fromItem": n }` targets the record item n created or changed. Only earlier items; a referenced field must be readable in clear (`403 field-restricted` / `field-masked` otherwise, so a hidden value is never copied into a visible field); a later item, a deleted record or an unknown field is `400 invalid-reference`. Result: `{ items: [ { index, op, recordId, @etag? | deleted } ], count, preview? }`; cost is the number of items. Requires `Wicket - Edit`. An idempotency key covers the whole batch; a replay re-checks every item's table.
+A value `{ "fromItem": n, "field": "<name>" }` (or `"fieldNo"`) is that field of the record item n wrote, read after it ran — the header's number in the example above. `recordId: { "fromItem": n }` targets the record item n created or changed. Only earlier items; a referenced field must be readable in clear, on a table exposed for read (`403 field-restricted` / `field-masked` / `not-exposed` otherwise, so a hidden value, or one from a table the caller may write but not read, is never copied into a visible field); a FlowField is calculated; a later item, a deleted record, an unknown field, or a FlowFilter, Blob or Media field is `400 invalid-reference`. An item that names its record by `{ "fromItem": n }` and sends no `etag` is checked against the record as the batch left it, so chained items also work where **Require ETag On Writes** is on. Result: `{ items: [ { index, op, recordId, @etag? | deleted } ], count, preview? }`; cost is the number of items. Requires `Wicket - Edit`. An idempotency key covers the whole batch; a replay re-checks every item's table.
 
 ### Making writes safe to retry
 
@@ -1327,7 +1330,8 @@ Returns `{ value: [ { entryNo, createdAt, kind, tableId, tableName, recordKey, s
 | `empty-blob` · 404 | Media has no content | Skip. |
 | `etag-required` / `no-etag-available` · 409 | Tenant requires an etag | Read first, send `data.etag`. |
 | `batch-too-large` · 400 | A `batch` with more than 100 items | Split it. |
-| `invalid-reference` · 400 | A batch `fromItem` naming a later item, a deleted record or an unknown field | Reference earlier items only; take the field name from `describe`. |
+| `batch-failed` · 422 | A `batch` preview stopped on an error that left no item-level problem; `detail` is the Business Central error text | Read `detail`, fix the batch and preview again. Nothing was written. |
+| `invalid-reference` · 400 | A batch `fromItem` naming a later item, a deleted record, an unknown field, or a field with no value to copy (FlowFilter, Blob, Media) | Reference earlier items only; take the field name from `describe`. |
 | `role-forbidden` · 403 | The principal's Wicket role is below the operation | Do not retry; assign the permission set named in `detail`. |
 | `changes-off` · 403 | `changes` while the change history is off or not readable by the agent | An administrator turns it on (Setup, Change History); the Wicket Changes page still shows what was recorded. |
 | `changes-forbidden` · 403 | `changes` with `user` without `Wicket - Audit Changes` | Omit `user` to see your own changes, or assign the set. |
@@ -1367,7 +1371,7 @@ Returns `{ value: [ { entryNo, createdAt, kind, tableId, tableName, recordKey, s
 - No events, webhooks or change push: poll with `modifiedAfter`.
 - No joins or `$expand`: one table per call; follow `tableRelation` with a second query.
 - No SQL passthrough; the filter language is the subset above.
-- No bulk writes; one record per call.
+- No set-based writes (no update or delete by filter): `insert`, `modify` and `delete` take one record each, and `batch` carries up to 100 such items in one call and one transaction.
 - No streaming; page with `@nextLink` or deliver asynchronously.
 - No raw binary download from `readBlob`; base64 in JSON, at most 10 MB.
 - No reflection; only enrolled wrappers run.
@@ -1394,7 +1398,7 @@ A service principal that reads customers, items and open sales orders for a repo
 ```json
 { "id": "rep-1", "issuedAt": "2026-09-04T08:00:00Z", "origin": "reporting-agent",
   "data": { "tableId": 36, "select": ["No.", "Sell-to Customer Name", "Order Date", "Status"],
-            "filter": "\"Document Type\" eq 'Order' and Status eq 'Open'",
+            "filter": "\"Document Type\" eq 1 and Status eq 0",
             "orderBy": ["No. asc"], "top": 100 } }
 ```
 
@@ -1597,16 +1601,18 @@ A `device_code` or `browser` connection never blocks a tool call on the human. T
 | `wicket_query_all` | `query` looped | Follows `@nextLink` up to `maxPages` (default 100) or `maxRows` (default 5 000, at most 50 000; the walk stops after the page that reaches it); flags `@truncated` with the resume cursor; returns partial results with a resume cursor on a mid-run failure. No `aggregate`, no `deliver`. |
 | `wicket_apis` | `discover` with `kind: "apis"`, cached | The tenant's API catalog, cached per environment in memory and in `~/.config/wicket/cache/` (or `$WICKET_CACHE_DIR`) and revalidated with one `ifNoneMatch` call. Without `tableId` / `search` / `group` it answers a summary by route prefix. |
 | `wicket_api_read` | `describe` with `kind: "api"`, then a GET on the API | Reads through one API page after a fresh governance check; see chapter 19. Not recorded in the Operation Log; the server writes one stderr line per read. |
-| `wicket_insert`, `wicket_modify`, `wicket_delete`, `wicket_invoke`, `wicket_action` | the write and execute planes | Accept `idempotencyKey` (required by Wicket for `invoke` and `action` while Require Key For Actions is on). When an `invoke` or `action` call carries none, the server mints one and returns it as `@idempotencyKey`, so a call whose response was lost can be retried with the same key instead of posting twice, whatever the tenant's switch says. Marked destructive through MCP tool annotations so hosts prompt before running them. |
+| `wicket_batch` | `batch` | Up to 100 inserts, modifies and deletes, across any tables, in one call and one transaction: every item is written or none. `preview: true` runs everything and rolls it back. A later item can use an earlier one's record (`{ fromItem, field }` as a value, `{ fromItem }` as a `recordId`). A failure names the item (`item`, `itemOp`). Returns `{ items: [ { index, op, recordId, @etag? } ], count }`. |
+| `wicket_insert`, `wicket_modify`, `wicket_delete`, `wicket_invoke`, `wicket_action` | the write and execute planes | Accept `idempotencyKey` (required by Wicket for `invoke` and `action` while Require Key For Actions is on). When an `invoke`, `action` or `batch` call carries none, the server mints one and returns it as `@idempotencyKey`, so a call whose response was lost can be retried with the same key instead of posting twice, whatever the tenant's switch says. Marked destructive through MCP tool annotations so hosts prompt before running them. |
 | `wicket_capabilities`, `wicket_page_url`, `wicket_whoami` | self-description, deep link, identity | |
 | `wicket_status`, `wicket_cancel`, `wicket_requests` | async lifecycle | The server does not poll; the agent does. |
+| `wicket_changes` | `changes` | The change history, newest first: what the agent created, changed or deleted through Wicket, and the actions and procedures it ran, each entry with old and new values per field as the field policy allows them. Filters: `from`, `to`, `tableId`, `kind`, `viaConnection`, `top` (default 20, at most 100), and `user` (needs `Wicket - Audit Changes`); follow `@nextLink` with `cursor`. The caller's own entries without that set. `403 changes-off` while the history is off or closed to the agent on the Setup card. |
 | `wicket_connections`, `wicket_use` | local | List connections; switch the session's active one. Prefer the per-call `connection` parameter. |
-| `wicket_setup` | local, Entra and Business Central's own APIs | Guided setup behind `/wicket:setup`. Actions: `status`, `locate`, `signin`, `environments`, `companies`, `save`, `remove`, `setDefault`. A saved connection works at once. |
+| `wicket_setup` | local, Entra and Business Central's own APIs | Guided setup behind `/wicket:setup`. Actions: `status`, `locate`, `signin`, `environments`, `companies`, `save`, `remove`, `setDefault`, `secretPage` (opens a one-time browser page where the user pastes an app's client secret into the system's secret store) and `moveAsideBroken` (renames an unreadable `connections.json`, on the user's yes). A saved connection works at once. |
 | `wicket_skill` | local | The bundled usage guide — SKILL.md plus reference files (tools, filters, errors, writes, presenting, automation, tables, solutions, protocol) — with `toc` / `section` (a section or a whole file) / `full` modes. |
 
 The server sends the skill's essentials as MCP `instructions` at the handshake, so a host such as Claude Code places them in the session's system prompt before the first call; every tool carries a title and read-only/destructive annotations; a page of rows is rendered one row per line to keep results small. In Claude Code the simplest install is the `wicket` plugin (chapter 34), which brings the server, the skill and the `/wicket:setup`, `/wicket:orient` and `/wicket:inventory` commands in one step. Without it, the skill (`skills/wicket-usage/` in the plugin repository) is installed in Claude Code by placing it under `~/.claude/skills/` or `.claude/skills/`, or uploaded to claude.ai as a zip under Customize › Skills, from where it also syncs into Claude Code and Cowork.
 
-Every BC-touching tool accepts `connection: "<name>"`. A problem document is returned as an MCP tool error with the full RFC 7807 body, so the agent sees `detail` and `suggest`. A connection marked `readOnly: true` refuses the five mutating tools with `403 connection-read-only` before a token is minted; this complements, and does not replace, Wicket's Read-Only Mode and the permission sets.
+Every BC-touching tool accepts `connection: "<name>"`. A problem document is returned as an MCP tool error with the full RFC 7807 body, so the agent sees `detail` and `suggest`. A connection marked `readOnly: true` refuses the six mutating tools (`wicket_insert`, `wicket_modify`, `wicket_delete`, `wicket_batch`, `wicket_invoke`, `wicket_action`) with `403 connection-read-only` before a token is minted, except a call that runs inside the forced rollback (a `preview: true` batch or action, a non-mutating action); this complements, and does not replace, Wicket's Read-Only Mode and the permission sets.
 
 When a call's answer is lost (a timeout, or a 5xx from the gateway), the server's problem says what to do next according to the call: a read is safe to retry; a write sent with an `idempotencyKey` is resent with the same key (it replays, or answers `idempotency-in-progress` / `idempotency-indeterminate`); a write sent without one must not be blindly retried: query the affected records first.
 
@@ -1636,6 +1642,9 @@ AL object names keep the `Bcmag` prefix from the product's former name: renaming
 | Table | 94112 | Bcmag Mask Profile | How a masked value is rendered |
 | Table | 94113 | Bcmag Access Exception | Per-user verdict overrides with an optional window |
 | Table | 94114 | Bcmag Unmask Gate | Empty sentinel table; write rights granted only by `Wicket - Unmask` |
+| Table | 94115 | Bcmag Change Entry | Change history header: one row per record created, changed or deleted, or per action or procedure run |
+| Table | 94116 | Bcmag Field Change | One changed field of a change entry: old and new value as the field policy showed them |
+| Table | 94117 | Bcmag Changes Gate | Empty sentinel table; write rights granted only by `Wicket - Audit Changes` (and the sets that include it) |
 | Page | 94101 | Bcmag Setup Card | Setup |
 | Page | 94102 | Bcmag Exposure List | Exposure |
 | Page | 94103 | Bcmag Operation Log List | Audit |
@@ -1645,6 +1654,7 @@ AL object names keep the `Bcmag` prefix from the product's former name: renaming
 | Page | 94107 | Bcmag Secret Input | Masked secret dialog |
 | Page | 94108 | Bcmag Action Catalog List | Actions |
 | Page | 94109–94111 | Bcmag Classification Rules, Mask Profiles, Access Exceptions | Field policy rules, profiles and exceptions |
+| Page | 94112, 94113 | Bcmag Changes, Bcmag Field Changes | The Wicket Changes page and its changed-fields part |
 | Codeunit | 94100 | Bcmag Rpc Dispatcher | Envelope, idempotency key rules, replay, async fork, audit, telemetry |
 | Codeunit | 94101–94107 | Bcmag Envelope, Problem, Logger, Field Name Resolver, Type Mapper, Projector, Record Id Codec | Envelope parsing, problem documents, logging, projection |
 | Codeunit | 94108–94110 | Bcmag Filter Lexer, Parser, Applier | The OData filter subset to parameterised `SetFilter` |
@@ -1660,13 +1670,21 @@ AL object names keep the `Bcmag` prefix from the product's former name: renaming
 | Codeunit | 94146 | Bcmag Role Gate | The role-rung check on the gate tables |
 | Codeunit | 94147 | Bcmag Idempotency Guard | Takes, settles and judges reservations |
 | Codeunit | 94148 | Bcmag Op Authorizer | The gates shared by the runner and replay; re-authorizes stored responses |
+| Codeunit | 94149 | Bcmag Api Catalog | The tenant's API pages and queries, read from platform metadata (`discover kind:"apis"`, `describe kind:"api"`) |
 | Codeunit | 94150–94152 | Bcmag Policy Defaults, Field Masker, Hash Key | Shipped field-policy posture, mask rendering, the tenant HMAC key |
 | Codeunit | 94153 | Bcmag Async Reaper Guard | Reaper task failure codeunit; re-arms the chain (also run on every enqueue) |
 | Codeunit | 94154 | Bcmag Async Queue Purge | Retention purge of finished queue rows |
 | Codeunit | 94155 | Bcmag Async Enqueue Run | Error boundary around the enqueue body |
-| Codeunit | 94190 | Bcmag Wrap Ping | Sample invoke wrapper |
+| Codeunit | 94156 | Bcmag App Info | Which installed app owns an object (`app` in `discover` and `describe`), the publisher filter, `structureVersion` |
 | Codeunit | 94157 | Bcmag Action Rollback | The forced-rollback boundary for previews and non-mutating verbs |
+| Codeunit | 94158 | Bcmag Change Recorder | Writes the change history in the same transaction as the change |
+| Codeunit | 94159 | Bcmag Op Changes | The `changes` handler |
+| Codeunit | 94160–94162 | Bcmag Op Batch, Batch Rollback, Batch Context | The `batch` handler, the forced-rollback boundary of its preview, and the state carried across it |
+| Codeunit | 94190 | Bcmag Wrap Ping | Sample invoke wrapper |
 | Codeunit (companion) | 94200, 94202, 94203, 94204 | Bcmag Act Post … | Posting wrappers |
+| Codeunit (companion) | 94201, 94206 | Bcmag Act Install, Bcmag Act Upgrade | Enrol the wrappers and actions (disabled); on upgrade refresh the companion-owned fields of existing rows |
+| Codeunit (companion) | 94205 | Bcmag Act New Company | Enrols the same rows in a company created later |
+| Codeunit (companion) | 94210 | Bcmag Act Helper | Shared argument parsing for the wrappers |
 | Codeunit (companion) | 94207, 94208 | Bcmag Act Preview, Bcmag Act Preview Capture | Posting previews on Business Central's preview engine |
 | Codeunit (companion) | 94209 | Bcmag Act Doc Resolver | Document addressing for the newer wrappers |
 | Codeunit (companion) | 94211–94214 | Bcmag Act Release/Reopen Sales/Purch Doc | Release and reopen wrappers |
@@ -1675,6 +1693,7 @@ AL object names keep the `Bcmag` prefix from the product's former name: renaming
 | Permission set | 94102–94107 | Wicket - Objects / Read / Execute / Edit / Audit / Admin | The ladder |
 | Permission set | 94110, 94111 | Wicket Data - Read / Wicket Data - Exec | Generic data sets |
 | Permission set | 94112 | Wicket - Unmask | The unmask tier |
+| Permission set | 94113 | Wicket - Audit Changes (object name `Wicket - Changes`) | Every principal's change history; included in Audit and Admin |
 | Permission set (companion) | 94200 | Wicket Act | Wrapper reachability |
 
 ## B. Operation by permission set
@@ -1683,10 +1702,14 @@ AL object names keep the `Bcmag` prefix from the product's former name: renaming
 |---|---|---|---|---|---|---|
 | discover, describe, query, readBlob, capabilities, skill, pageUrl, whoAmI | yes | yes | yes | yes | yes | yes |
 | status, requests, cancel, async deliver | yes | yes | yes | yes | yes | yes |
+| changes (the caller's own entries) | yes | yes | yes | yes | yes | yes |
+| changes with `user` (every user's entries) | no | no | no | yes | no | no |
 | invoke, action | no | yes | yes | yes | no | yes |
-| insert, modify, delete | no | no | yes | yes | no | no |
+| insert, modify, delete, batch | no | no | yes | yes | no | no |
 | Admin pages | no | no | no | yes (Audit views) | no | no |
 | Set Azure Credential, Log Purge | no | no | no | yes | no | no |
+
+`Wicket - Audit Changes`, alone or through `Wicket - Audit`, also opens the `user` filter of `changes` for a caller that holds a data-plane rung.
 
 ## C. Common Business Central table ids
 

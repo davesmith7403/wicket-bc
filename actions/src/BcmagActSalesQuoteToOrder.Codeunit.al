@@ -16,6 +16,7 @@ codeunit 94215 "Bcmag Act Sales Quote To Order"
         Ctx: Codeunit "Bcmag Invoke Context";
         Resolver: Codeunit "Bcmag Act Doc Resolver";
         SalesQuoteToOrder: Codeunit "Sales-Quote to Order";
+        ApprovalsMgmt: Codeunit "Approvals Mgmt.";
         Args, Result : JsonObject;
         QuoteNo: Code[20];
     begin
@@ -31,6 +32,9 @@ codeunit 94215 "Bcmag Act Sales Quote To Order"
         if not Opportunity.IsEmpty() then
             Error('sales quote %1 is linked to an opportunity in progress; close or update the opportunity in Business Central first', QuoteNo);
 
+        // The quote pages check this before Make Order / Make Invoice: with an approval workflow enabled,
+        // a quote that was never approved is not converted.
+        ApprovalsMgmt.PrePostApprovalCheckSales(QuoteHeader);
         SalesQuoteToOrder.Run(QuoteHeader);
         SalesQuoteToOrder.GetSalesOrderHeader(OrderHeader);
 

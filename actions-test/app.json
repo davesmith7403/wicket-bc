@@ -11,7 +11,7 @@
   "idRanges": [{ "from": 94350, "to": 94399 }],
   "dependencies": [
     { "id": "4057cf1f-1b34-409a-a570-c6fdf625c434", "name": "Wicket", "publisher": "Dave The Wicketkeeper", "version": "1.3.0.0" },
-    { "id": "a258283d-1999-440b-b6d7-b4490b92ec76", "name": "Wicket Actions - Base", "publisher": "Dave The Wicketkeeper", "version": "0.3.0.0" },
+    { "id": "a258283d-1999-440b-b6d7-b4490b92ec76", "name": "Wicket Actions - Base", "publisher": "Dave The Wicketkeeper", "version": "0.3.1.0" },
     { "id": "437dbf0e-84ff-417a-965d-ed2bb9650972", "name": "Base Application", "publisher": "Microsoft", "version": "26.0.0.0" },
     { "id": "dd0be2ea-f733-4d65-bb34-a28f4624fb14", "name": "Library Assert", "publisher": "Microsoft", "version": "26.0.0.0" },
     { "id": "23de40a6-dfe8-4f80-80db-d70f83ce8caf", "name": "Test Runner", "publisher": "Microsoft", "version": "26.0.0.0" }

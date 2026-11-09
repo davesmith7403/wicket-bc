@@ -102,6 +102,43 @@ codeunit 94151 "Bcmag Field Masker"
         end;
     end;
 
+    // The masked rendering of a value held as TEXT (the change history stores every value as text),
+    // by the type of the field it came from, so the history never shows more than a read of the field
+    // would: Text/Code follow MaskText; every other type renders nothing, except Fixed (the fixed text)
+    // and Hash outside Boolean/Option (the same token a read returns: both hash Format(value, 0, 9)).
+    procedure MaskStoredText(Value: Text; FieldType: FieldType; ProfileCode: Code[20]): Text
+    begin
+        if Value = '' then
+            exit('');
+        if IsTextType(FieldType) then
+            exit(MaskText(Value, ProfileCode));
+        LoadProfile(ProfileCode);
+        case CurKind of
+            CurKind::Hash:
+                if not IsSmallDomainType(FieldType) then
+                    exit(HashToken(Value));
+            CurKind::Fixed:
+                exit(CurFixedText);
+        end;
+        exit('');
+    end;
+
+    // A value the history stored MASKED, as it may be shown today. Text/Code values were stored by
+    // MaskText and stay. For every other type only what MaskStoredText can produce is kept (a hash
+    // token, or the profile's fixed text); anything else is a partial rendering an earlier version
+    // stored for a non-text field, and is shown as nothing.
+    procedure KeepStoredMask(Value: Text; FieldType: FieldType; ProfileCode: Code[20]): Text
+    begin
+        if (Value = '') or IsTextType(FieldType) then
+            exit(Value);
+        LoadProfile(ProfileCode);
+        if Value.StartsWith(HashPrefixTok) and not IsSmallDomainType(FieldType) then
+            exit(Value);
+        if (CurKind = CurKind::Fixed) and (Value = CurFixedText) then
+            exit(Value);
+        exit('');
+    end;
+
     // The describe/schema type for a masked field: Hash and Fixed turn a non-text field into a string.
     procedure EmittedTypeName(FieldType: FieldType; ProfileCode: Code[20]; OriginalTypeName: Text): Text
     begin

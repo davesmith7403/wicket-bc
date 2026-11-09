@@ -14,6 +14,9 @@ codeunit 94104 "Bcmag Field Name Resolver"
         FieldRec.SetRange(TableNo, TableId);
         if FieldRec.IsEmpty() then exit(false);
 
+        // A name longer than any field name cannot match, and filtering on it would raise.
+        if StrLen(Name) > MaxStrLen(FieldRec.FieldName) then
+            exit(false);
         FieldRec.SetRange(FieldName, Name);
         if FieldRec.FindFirst() then begin
             FieldNo := FieldRec."No.";

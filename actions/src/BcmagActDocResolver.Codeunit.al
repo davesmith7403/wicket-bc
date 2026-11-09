@@ -19,6 +19,14 @@ codeunit 94209 "Bcmag Act Doc Resolver"
                 Error('args.systemId "%1" is not a valid GUID', SysIdTxt);
             if not SalesHeader.GetBySystemId(SysId) then
                 Error('no sales header with systemId %1', SysIdTxt);
+            // A systemId wins, but never silently over a documentType or no that names another document:
+            // a stale target beside a fresh number must not act on the stale one.
+            if Helper.GetText(Args, 'no', NoTxt) then
+                if UpperCase(NoTxt) <> SalesHeader."No." then
+                    Error('args.systemId names sales document %1, but args.no is "%2"; send one of them, or two that agree', SalesHeader."No.", NoTxt);
+            if Helper.GetText(Args, 'documentType', DocTypeTxt) then
+                if ParseSalesDocType(DocTypeTxt) <> SalesHeader."Document Type" then
+                    Error('args.systemId names sales document %1, which is not a %2; send one of them, or two that agree', SalesHeader."No.", DocTypeTxt);
             exit;
         end;
         if Helper.GetText(Args, 'no', NoTxt) then begin
@@ -44,6 +52,14 @@ codeunit 94209 "Bcmag Act Doc Resolver"
                 Error('args.systemId "%1" is not a valid GUID', SysIdTxt);
             if not PurchHeader.GetBySystemId(SysId) then
                 Error('no purchase header with systemId %1', SysIdTxt);
+            // A systemId wins, but never silently over a documentType or no that names another document:
+            // a stale target beside a fresh number must not act on the stale one.
+            if Helper.GetText(Args, 'no', NoTxt) then
+                if UpperCase(NoTxt) <> PurchHeader."No." then
+                    Error('args.systemId names purchase document %1, but args.no is "%2"; send one of them, or two that agree', PurchHeader."No.", NoTxt);
+            if Helper.GetText(Args, 'documentType', DocTypeTxt) then
+                if ParsePurchaseDocType(DocTypeTxt) <> PurchHeader."Document Type" then
+                    Error('args.systemId names purchase document %1, which is not a %2; send one of them, or two that agree', PurchHeader."No.", DocTypeTxt);
             exit;
         end;
         if Helper.GetText(Args, 'no', NoTxt) then begin

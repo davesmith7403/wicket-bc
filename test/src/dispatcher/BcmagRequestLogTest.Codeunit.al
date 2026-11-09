@@ -83,6 +83,35 @@ codeunit 94339 "Bcmag Request Log Test"
     end;
 
     [Test]
+    procedure BatchLogsItsItemsShapeNeverValues()
+    var
+        Log: Record "Bcmag Operation Log";
+        Data, Item, Values: JsonObject;
+        Items: JsonArray;
+        Body: JsonObject;
+        Marker: Text;
+    begin
+        Helper.ConfigureOpenMode();
+        SetLogRequestDetails(true);
+        Marker := 'LOG-SECRET-' + DelChr(LowerCase(Format(CreateGuid())), '<>', '{}');
+        Values.Add('Description', Marker);
+        Item.Add('op', 'insert');
+        Item.Add('tableId', Database::"Activity Log");
+        Item.Add('values', Values);
+        Item.Add('init', false);
+        Items.Add(Item);
+        Data.Add('items', Items);
+        Body := Helper.EnvelopeWithKey(Data, Helper.NewIdemKey());
+        Send('batch', Body);
+
+        FindLog(Body, Log);
+        LibraryAssert.AreEqual('1 items', Log.Target, 'a batch says how many items it held');
+        LibraryAssert.IsTrue(StrPos(Log."Request Details", '"op":"insert"') > 0, 'each item''s op is recorded: ' + Log."Request Details");
+        LibraryAssert.IsTrue(StrPos(Log."Request Details", '"values":["Description"]') > 0, 'and its field names: ' + Log."Request Details");
+        LibraryAssert.AreEqual(0, StrPos(Log."Request Details", Marker), 'the written value must never be recorded');
+    end;
+
+    [Test]
     procedure ActionLogsItsCodeAsTarget()
     var
         Log: Record "Bcmag Operation Log";

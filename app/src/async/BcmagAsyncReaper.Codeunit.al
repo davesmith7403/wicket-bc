@@ -115,6 +115,21 @@ codeunit 94137 "Bcmag Async Reaper"
             ScheduleNext(CurrentDateTime() + IntervalDuration());
     end;
 
+    // The request path's check (the dispatcher, once per request): one IsolatedStorage read while the
+    // chain is healthy. Retention of the Operation Log and the change history depends on this task, and
+    // without this only Install/Upgrade and an async enqueue ever armed it — a company created later,
+    // or one whose chain died, with async delivery unused, kept its logs forever.
+    procedure EnsureIfOverdue()
+    var
+        NextAt: DateTime;
+    begin
+        NextAt := StoredNextAt();
+        if NextAt <> 0DT then
+            if NextAt + IntervalDuration() > CurrentDateTime() then
+                exit;
+        Ensure();
+    end;
+
     local procedure FailStaleRunning()
     var
         Row: Record "Bcmag Request Queue";

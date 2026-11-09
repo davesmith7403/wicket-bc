@@ -14,6 +14,7 @@ codeunit 94217 "Bcmag Act Purch Quote To Order"
         Ctx: Codeunit "Bcmag Invoke Context";
         Resolver: Codeunit "Bcmag Act Doc Resolver";
         PurchQuoteToOrder: Codeunit "Purch.-Quote to Order";
+        ApprovalsMgmt: Codeunit "Approvals Mgmt.";
         Args, Result : JsonObject;
         QuoteNo: Code[20];
     begin
@@ -21,6 +22,9 @@ codeunit 94217 "Bcmag Act Purch Quote To Order"
         Resolver.ResolvePurchaseQuote(Args, QuoteHeader);
         QuoteNo := QuoteHeader."No.";
 
+        // The quote pages check this before Make Order: with an approval workflow enabled,
+        // a quote that was never approved is not converted.
+        ApprovalsMgmt.PrePostApprovalCheckPurch(QuoteHeader);
         PurchQuoteToOrder.Run(QuoteHeader);
         PurchQuoteToOrder.GetPurchOrderHeader(OrderHeader);
 

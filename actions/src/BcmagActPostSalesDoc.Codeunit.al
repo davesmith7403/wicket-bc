@@ -47,6 +47,16 @@ codeunit 94200 "Bcmag Act Post Sales Doc"
     begin
         Args := Ctx.GetArgs();
         ResolveHeader(Args, Helper, SalesHeader);
+        // Sales-Post has no document type guard of its own (the quote and blanket order pages simply
+        // have no Post action): a quote handed to it would post as if it were an invoice.
+        if SalesHeader."Document Type" in [SalesHeader."Document Type"::Quote, SalesHeader."Document Type"::"Blanket Order"] then
+            Error('a sales %1 cannot be posted; turn it into an order or invoice first', DocTypeName(SalesHeader."Document Type"));
+        // What the Post action on the pages and the standard API check before they call the poster: an
+        // enabled approval workflow with the document not yet approved, and unpaid prepayments. Sales-Post
+        // itself only knows a restriction that exists once an approval request was SENT. A preview meets
+        // the same refusal, so it answers what posting would.
+        if not SalesHeader.IsApprovedForPosting() then
+            Error('sales %1 %2 is not approved for posting', DocTypeName(SalesHeader."Document Type"), SalesHeader."No.");
         ApplyPostingSelection(Args, Helper, SalesHeader);
         DocType := SalesHeader."Document Type";
         DocNo := SalesHeader."No.";
@@ -174,6 +184,14 @@ codeunit 94200 "Bcmag Act Post Sales Doc"
                 Error('args.systemId "%1" is not a valid GUID', SysIdTxt);
             if not SalesHeader.GetBySystemId(SysId) then
                 Error('no sales header with systemId %1', SysIdTxt);
+            // A systemId wins, but never silently over a documentType or no that names another document:
+            // a stale target beside a fresh number must not post the stale one.
+            if Helper.GetText(Args, 'no', NoTxt) then
+                if UpperCase(NoTxt) <> SalesHeader."No." then
+                    Error('args.systemId names sales document %1, but args.no is "%2"; send one of them, or two that agree', SalesHeader."No.", NoTxt);
+            if Helper.GetText(Args, 'documentType', DocTypeTxt) then
+                if ParseDocType(DocTypeTxt) <> SalesHeader."Document Type" then
+                    Error('args.systemId names sales document %1, which is not a %2; send one of them, or two that agree', SalesHeader."No.", DocTypeTxt);
             exit;
         end;
 

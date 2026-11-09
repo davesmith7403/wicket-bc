@@ -41,6 +41,39 @@ codeunit 94312 "Bcmag Op Query Test"
     end;
 
     [Test]
+    procedure FieldSelectedTwiceIsProjectedOnce()
+    var
+        Data, Response, Fail: JsonObject;
+        Select: JsonArray;
+        Cost: Integer;
+    begin
+        Helper.ConfigureOpenMode();
+        SeedCustomers();
+        Select.Add('Name'); Select.Add('Name');
+        Data.Add('tableId', Database::Customer);
+        Data.Add('select', Select);
+        LibraryAssert.IsTrue(Op.Run(Data, Response, Fail, Cost), StrSubstNo('a repeated field must not fail the query: %1', Helper.DetailOf(Fail)));
+        LibraryAssert.AreEqual(3, Helper.ValueArray(Response).Count(), 'all rows');
+    end;
+
+    [Test]
+    procedure FieldNameLongerThanAnyFieldIsUnknown()
+    var
+        Data, Response, Fail: JsonObject;
+        Select: JsonArray;
+        Cost: Integer;
+    begin
+        Helper.ConfigureOpenMode();
+        SeedCustomers();
+        Select.Add('A field name far longer than thirty characters can ever be');
+        Data.Add('tableId', Database::Customer);
+        Data.Add('select', Select);
+        LibraryAssert.IsFalse(Op.Run(Data, Response, Fail, Cost), 'refused');
+        LibraryAssert.AreEqual(400, Helper.StatusOf(Fail), 'the caller''s mistake, not an internal error');
+        LibraryAssert.IsTrue(StrPos(Helper.TypeOf(Fail), 'unknown-field') > 0, 'unknown-field: ' + Helper.TypeOf(Fail));
+    end;
+
+    [Test]
     procedure QueryRowsCarryRecordId()
     var
         Data, Response, Fail: JsonObject;

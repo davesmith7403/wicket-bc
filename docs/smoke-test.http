@@ -123,7 +123,7 @@ Content-Type: application/json
 ###
 # capabilities — machine-readable self-description (no data needed)
 # Expected: response.value has product="Wicket", urlTemplate, transport.httpStatus="always-200",
-#           an operations[] array (16 entries incl. capabilities), filterGrammar, and live limits.
+#           an operations[] array (18 entries incl. capabilities), filterGrammar, and live limits.
 # envelope (sent serialised as the "envelope" string):
 # {
 #   "id": "smoke-4",

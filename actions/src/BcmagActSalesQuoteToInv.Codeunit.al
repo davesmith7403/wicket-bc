@@ -14,6 +14,7 @@ codeunit 94216 "Bcmag Act Sales Quote To Inv"
         Ctx: Codeunit "Bcmag Invoke Context";
         Resolver: Codeunit "Bcmag Act Doc Resolver";
         SalesQuoteToInvoice: Codeunit "Sales-Quote to Invoice";
+        ApprovalsMgmt: Codeunit "Approvals Mgmt.";
         Args, Result : JsonObject;
         QuoteNo: Code[20];
     begin
@@ -21,6 +22,9 @@ codeunit 94216 "Bcmag Act Sales Quote To Inv"
         Resolver.ResolveQuote(Args, QuoteHeader);
         QuoteNo := QuoteHeader."No.";
 
+        // The quote pages check this before Make Order / Make Invoice: with an approval workflow enabled,
+        // a quote that was never approved is not converted.
+        ApprovalsMgmt.PrePostApprovalCheckSales(QuoteHeader);
         SalesQuoteToInvoice.Run(QuoteHeader);
         SalesQuoteToInvoice.GetSalesInvoiceHeader(InvoiceHeader);
 

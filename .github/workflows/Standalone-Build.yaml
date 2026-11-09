@@ -84,11 +84,12 @@ jobs:
           #   'actions' -> Actions companion (actions/app.json, depends on the core by id;
           #                Run-AlPipeline orders app folders by dependency)
           #   'test'    -> test app        (test/app.json), built as a test app and its tests executed.
+          #   'actions-test' -> companion test app (actions-test/app.json), likewise.
           # NEVER use '.' here: the AL compiler globs *.al recursively, so a root app folder
           # swallows the sibling apps (an earlier AL-Go run compiled 105 files instead of 71 and
           # failed with AL0185 Library Assert + AL0297 50200-out-of-range).
           $appFolders  = @('app', 'actions')
-          $testFolders = @('test')
+          $testFolders = @('test', 'actions-test')
 
           # Throwaway container credentials (sandbox is ephemeral per run).
           $password = ConvertTo-SecureString -String ([guid]::NewGuid().ToString()) -AsPlainText -Force

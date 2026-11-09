@@ -153,6 +153,86 @@ codeunit 94348 "Bcmag Batch Test"
     end;
 
     [Test]
+    procedure ReferenceToATableNotExposedForReadIsRefused()
+    var
+        ShipTo: Record "Ship-to Address";
+        Items: JsonArray;
+        Values, Response, Fail: JsonObject;
+        Cost: Integer;
+    begin
+        // Writable is not readable: a value must not leave a write-only table through a reference.
+        Helper.ConfigureAllowlistedMode();
+        Helper.EnsureManualCustomerNos();
+        Helper.ExposeTable(Database::Customer, false, true, true, false);
+        Helper.ExposeTable(Database::"Ship-to Address", true, true, true, false);
+        DeleteCustomers('BT-13');
+        if ShipTo.Get('BT-13', 'MAIN') then ShipTo.Delete();
+        Items.Add(InsertCustomer('BT-13', 'Batch Thirteen'));
+        Values.Add('Customer No.', 'BT-13');
+        Values.Add('Code', 'MAIN');
+        Values.Add('Name', FieldFrom(0, 'Name'));
+        Items.Add(Item('insert', Database::"Ship-to Address", '', Values));
+        Helper.CommitFixtures();
+        LibraryAssert.IsFalse(OpBatch.Run(BatchData(Items, true), Response, Fail, Cost), 'refused');
+        LibraryAssert.AreEqual(403, Helper.StatusOf(Fail), '403');
+        LibraryAssert.IsTrue(StrPos(Helper.TypeOf(Fail), 'not-exposed') > 0, 'not-exposed: ' + Helper.TypeOf(Fail));
+        LibraryAssert.AreEqual(1, IntField(Fail, 'item'), 'the item with the reference');
+        Helper.ConfigureOpenMode();
+        Helper.CommitFixtures();
+    end;
+
+    [Test]
+    procedure ReferenceToAFieldWithNoValueToCopyIsRefused()
+    var
+        Items: JsonArray;
+        Values, Response, Fail, BadRef, NotAName: JsonObject;
+        Cost: Integer;
+    begin
+        Prepare();
+        DeleteCustomers('BT-14');
+        Items.Add(InsertCustomer('BT-14', 'Batch Fourteen'));
+        Values.Add('Name', FieldFrom(0, 'Date Filter'));
+        Items.Add(Item('modify', Database::Customer, FromItem(0), Values));
+        Helper.CommitFixtures();
+        LibraryAssert.IsFalse(OpBatch.Run(BatchData(Items, true), Response, Fail, Cost), 'a FlowFilter is refused');
+        LibraryAssert.AreEqual(400, Helper.StatusOf(Fail), '400');
+        LibraryAssert.IsTrue(StrPos(Helper.TypeOf(Fail), 'invalid-reference') > 0, 'invalid-reference: ' + Helper.TypeOf(Fail));
+
+        // "field" that is not a name is the caller's mistake (400), not an internal error.
+        Clear(Items);
+        Clear(Values);
+        Clear(Fail);
+        Items.Add(InsertCustomer('BT-14', 'Batch Fourteen'));
+        BadRef.Add('fromItem', 0);
+        BadRef.Add('field', NotAName);
+        Values.Add('Name', BadRef);
+        Items.Add(Item('modify', Database::Customer, FromItem(0), Values));
+        LibraryAssert.IsFalse(OpBatch.Run(BatchData(Items, true), Response, Fail, Cost), 'a malformed field is refused');
+        LibraryAssert.AreEqual(400, Helper.StatusOf(Fail), '400 for a malformed reference');
+        LibraryAssert.AreEqual(1, IntField(Fail, 'item'), 'the item with the reference');
+    end;
+
+    [Test]
+    procedure ChainedItemRunsWhereAnEtagIsRequired()
+    var
+        Customer: Record Customer;
+        Items: JsonArray;
+        Response, Fail: JsonObject;
+        Cost: Integer;
+    begin
+        // The record was produced inside this transaction: the chained item is given its current etag.
+        Prepare();
+        DeleteCustomers('BT-15');
+        Helper.RequireEtagOnWrites(true);
+        Items.Add(InsertCustomer('BT-15', 'Batch Fifteen'));
+        Items.Add(ModifyName(FromItem(0), 'Batch Fifteen Renamed'));
+        LibraryAssert.IsTrue(OpBatch.Run(BatchData(Items, false), Response, Fail, Cost), 'batch: ' + Helper.DetailOf(Fail));
+        Customer.Get('BT-15');
+        LibraryAssert.AreEqual('Batch Fifteen Renamed', Customer.Name, 'the chained modify ran');
+        Helper.RequireEtagOnWrites(false);
+    end;
+
+    [Test]
     procedure ReferenceToALaterItemIsRefused()
     var
         Items: JsonArray;

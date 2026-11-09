@@ -59,6 +59,13 @@ codeunit 94113 "Bcmag Op Query"
                 StrSubstNo('table %1 is not exposed for read; enroll it in Wicket Exposure or switch Mode to Open', TableId));
             exit(false);
         end;
+        // The principal's own table permission, answered as the typed refusal discover and replay give
+        // rather than left to the platform to raise mid-read.
+        if LacksReadPermission(TableId) then begin
+            Fail := Problem.NewFailure(403, 'not-exposed', 'Table not exposed',
+                StrSubstNo('table %1 is not readable by the calling principal', TableId));
+            exit(false);
+        end;
 
         // Aggregate mode: the usual tableId/exposure/filter steps ran (or run below inside
         // RunAggregate for the filter), but the result is one summary object computed
@@ -481,7 +488,8 @@ codeunit 94113 "Bcmag Op Query"
                         StrSubstNo('unknown field "%1" on table %2', Name, TableId));
                 exit(false);
             end;
-            FieldNos.Add(FieldNo);
+            if not FieldNos.Contains(FieldNo) then // a field named twice is projected once
+                FieldNos.Add(FieldNo);
         end;
         exit(true);
     end;
@@ -556,6 +564,25 @@ codeunit 94113 "Bcmag Op Query"
         exit(true);
     end;
 
+    // False for a table that cannot be opened: the unknown-table answer belongs to the steps below.
+    local procedure LacksReadPermission(TableId: Integer): Boolean
+    var
+        RecRef: RecordRef;
+        Lacks: Boolean;
+    begin
+        if not TryOpenTable(RecRef, TableId) then
+            exit(false);
+        Lacks := not RecRef.ReadPermission();
+        RecRef.Close();
+        exit(Lacks);
+    end;
+
+    [TryFunction]
+    local procedure TryOpenTable(var RecRef: RecordRef; TableId: Integer)
+    begin
+        RecRef.Open(TableId);
+    end;
+
     local procedure ResolveSelectByNo(Nos: JsonArray; var FieldNos: List of [Integer]; var Fail: JsonObject): Boolean
     var
         Tok: JsonToken;
@@ -564,7 +591,8 @@ codeunit 94113 "Bcmag Op Query"
         for i := 0 to Nos.Count() - 1 do begin
             Nos.Get(i, Tok);
             if not JsonRead.ReadInteger(Tok, 'selectFieldNo[]', FieldNo, Fail) then exit(false);
-            FieldNos.Add(FieldNo);
+            if not FieldNos.Contains(FieldNo) then
+                FieldNos.Add(FieldNo);
         end;
         exit(true);
     end;

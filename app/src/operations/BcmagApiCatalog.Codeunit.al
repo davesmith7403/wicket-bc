@@ -99,12 +99,18 @@ codeunit 94149 "Bcmag Api Catalog"
         // Routable is the governance answer a client must obtain fresh before reading through the API:
         // the switch is on, and the source table is one Wicket itself would let this caller read.
         TableReadable := TableReadableNow(PageMeta.SourceTable);
-        Routable := RoutingOn() and TableReadable;
+        // A page over a TEMPORARY source table fills its fields from other tables in AL: the field policy
+        // on the buffer's fields says nothing about the fields the values really come from, so the
+        // pre-check cannot judge it — never routable, on the reasoning applied to a computed control.
+        Routable := RoutingOn() and TableReadable and not PageMeta.SourceTableTemporary;
         if not RoutingOn() then
             Reason := 'routing-off'
         else
             if not TableReadable then
-                Reason := 'not-exposed';
+                Reason := 'not-exposed'
+            else
+                if PageMeta.SourceTableTemporary then
+                    Reason := 'temporary-source';
         Value.Add('routable', Routable);
         if Reason <> '' then
             Value.Add('notRoutableReason', Reason);

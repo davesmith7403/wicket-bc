@@ -42,6 +42,13 @@ codeunit 94148 "Bcmag Op Authorizer"
         ClearByField: Dictionary of [Text, Boolean];
         RequestTableId: Integer;
 
+    // The most items one batch may hold. It lives here, on the object rung, because capabilities
+    // reports it to every caller: the batch handler itself is executable only from "Wicket - Edit".
+    procedure MaxBatchItems(): Integer
+    begin
+        exit(100);
+    end;
+
     // Tenant + principal gates. Shared by the runner (before routing) and by replay.
     procedure CheckGates(Operation: Text; Data: JsonObject; var Fail: JsonObject): Boolean
     var
@@ -407,7 +414,66 @@ codeunit 94148 "Bcmag Op Authorizer"
                 end;
             'discover':
                 exit(CheckDiscoverValue(Cached, Fail));
+            'changes':
+                exit(CheckChangesValue(Cached, Fail));
         end;
+        exit(true);
+    end;
+
+    // A stored changes answer carries field values as the policy showed them then. It replays only
+    // while the agent may still read the history and every value it shows is still shown at least as
+    // clearly today: "clear" needs the field Clear and its table readable, "masked" needs it readable.
+    local procedure CheckChangesValue(Cached: JsonObject; var Fail: JsonObject): Boolean
+    var
+        Setup: Record "Bcmag Setup";
+        Entry, Line: JsonObject;
+        Tok, EntryTok, LineTok, Member: JsonToken;
+        TableId, FieldNo: Integer;
+        Shown: Text;
+    begin
+        if not Cached.Get('value', Tok) then
+            exit(true);
+        if not Tok.IsArray() then
+            exit(true);
+        Setup.GetSingleton();
+        if (not Setup."Agent Can Read Changes") or (Setup."Record Changes" = Setup."Record Changes"::Off) then begin
+            Fail := Problem.NewFailure(403, 'changes-off', 'Change history not available',
+                'the change history is off, or not readable by the agent, on the Wicket Setup card (Change History)');
+            exit(false);
+        end;
+        foreach EntryTok in Tok.AsArray() do
+            if EntryTok.IsObject() then begin
+                Entry := EntryTok.AsObject();
+                TableId := 0;
+                if Entry.Get('tableId', Member) then
+                    TableId := IntOf(Member);
+                if (TableId <> 0) and Entry.Get('fields', Member) then
+                    if Member.IsArray() then
+                        foreach LineTok in Member.AsArray() do
+                            if LineTok.IsObject() then begin
+                                Line := LineTok.AsObject();
+                                Shown := '';
+                                FieldNo := 0;
+                                if Line.Get('shownAs', Member) then
+                                    if Member.IsValue() then
+                                        Shown := Member.AsValue().AsText();
+                                if Line.Get('fieldNo', Member) then
+                                    FieldNo := IntOf(Member);
+                                if Shown in ['clear', 'masked'] then begin
+                                    if not CheckTableRead(TableId, Fail) then
+                                        exit(false);
+                                    if not IsReadable(TableId, FieldNo) then begin
+                                        Fail := BodyRestricted(TableId);
+                                        exit(false);
+                                    end;
+                                    if Shown = 'clear' then
+                                        if not IsClear(TableId, FieldNo) then begin
+                                            Fail := BodyMasked(TableId);
+                                            exit(false);
+                                        end;
+                                end;
+                            end;
+            end;
         exit(true);
     end;
 

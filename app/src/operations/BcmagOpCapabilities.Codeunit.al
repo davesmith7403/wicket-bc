@@ -7,7 +7,7 @@ codeunit 94119 "Bcmag Op Capabilities"
     var
         FilterApplier: Codeunit "Bcmag Filter Applier";
         AppInfo: Codeunit "Bcmag App Info";
-        OpBatch: Codeunit "Bcmag Op Batch";
+        Authorizer: Codeunit "Bcmag Op Authorizer";
         SchemaVersionTok: Label '1.0', Locked = true;
 
     procedure Run(Data: JsonObject; var Response: JsonObject; var Fail: JsonObject; var Cost: Integer): Boolean
@@ -79,7 +79,7 @@ codeunit 94119 "Bcmag Op Capabilities"
         Limits.Add('maxSelectFields', Setup."Max Select Fields");
         Limits.Add('scanBudget', Setup."Per-Call Scan Budget");
         Limits.Add('maxInMembers', FilterApplier.MaxInMembers());
-        Limits.Add('maxBatchItems', OpBatch.MaxItems());
+        Limits.Add('maxBatchItems', Authorizer.MaxBatchItems());
         Caps.Add('limits', Limits);
 
         Caps.Add('readOnly', Setup."Read-Only Mode");

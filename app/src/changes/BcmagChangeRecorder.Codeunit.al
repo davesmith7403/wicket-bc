@@ -35,7 +35,15 @@ codeunit 94158 "Bcmag Change Recorder"
     end;
 
     /// The record's stored values by field number, as text — taken before a change or delete.
+    /// Empty when the history is off: the write handlers call this on every write, and a record nobody
+    /// will compare must not cost a pass over its fields (or fail the write on a value it cannot render).
     procedure Snapshot(var RecRef: RecordRef) Values: Dictionary of [Integer, Text]
+    begin
+        if not Enabled() then exit;
+        Values := TakeSnapshot(RecRef);
+    end;
+
+    local procedure TakeSnapshot(var RecRef: RecordRef) Values: Dictionary of [Integer, Text]
     var
         FldRef: FieldRef;
         i: Integer;
@@ -52,13 +60,13 @@ codeunit 94158 "Bcmag Change Recorder"
         Empty: Dictionary of [Integer, Text];
     begin
         if not Enabled() then exit;
-        WriteEntry("Bcmag Change Kind"::Created, After, DefaultsOf(After.Number()), Empty, Snapshot(After));
+        WriteEntry("Bcmag Change Kind"::Created, After, DefaultsOf(After.Number()), Empty, TakeSnapshot(After));
     end;
 
     procedure RecordChanged(Before: Dictionary of [Integer, Text]; var After: RecordRef)
     begin
         if not Enabled() then exit;
-        WriteEntry("Bcmag Change Kind"::Changed, After, Before, Before, Snapshot(After));
+        WriteEntry("Bcmag Change Kind"::Changed, After, Before, Before, TakeSnapshot(After));
     end;
 
     procedure RecordDeleted(Before: Dictionary of [Integer, Text]; var Deleted: RecordRef)
@@ -106,39 +114,43 @@ codeunit 94158 "Bcmag Change Recorder"
         Entry: Record "Bcmag Change Entry";
         FieldChange: Record "Bcmag Field Change";
         Current: Dictionary of [Integer, Text];
+        ChangedFields: List of [Integer];
         FieldNo: Integer;
-        OldText, NewText, CompareText, CurrentText: Text;
+        OldText, NewText, CompareText: Text;
         LineNo: Integer;
     begin
         if Kind = Kind::Deleted then
             Current := OldValues
         else
             Current := NewValues;
+        foreach FieldNo in Current.Keys() do begin
+            CompareText := '';
+            if Compare.ContainsKey(FieldNo) then
+                CompareText := Compare.Get(FieldNo);
+            if Current.Get(FieldNo) <> CompareText then
+                ChangedFields.Add(FieldNo);
+        end;
+
+        // The entry is written once, with its field count: the data-plane sets grant insert on the
+        // history tables and nothing more, so the recorder must never Modify a row it wrote.
         InitEntry(Entry, Kind);
         Entry."Table Id" := RecRef.Number();
         Entry."Table Name" := CopyStr(RecRef.Name(), 1, MaxStrLen(Entry."Table Name"));
         Entry."Record Key" := CopyStr(KeyText(RecRef), 1, MaxStrLen(Entry."Record Key"));
         Entry."Record SystemId" := RecRef.Field(RecRef.SystemIdNo()).Value();
+        Entry."Field Count" := ChangedFields.Count();
         Entry.Insert();
 
-        foreach FieldNo in Current.Keys() do begin
-            CurrentText := Current.Get(FieldNo);
-            CompareText := '';
-            if Compare.ContainsKey(FieldNo) then
-                CompareText := Compare.Get(FieldNo);
-            if CurrentText <> CompareText then begin
-                OldText := '';
-                NewText := '';
-                if OldValues.ContainsKey(FieldNo) and (Kind <> Kind::Created) then
-                    OldText := OldValues.Get(FieldNo);
-                if NewValues.ContainsKey(FieldNo) and (Kind <> Kind::Deleted) then
-                    NewText := NewValues.Get(FieldNo);
-                LineNo += 10000;
-                AddLine(FieldChange, Entry."Entry No.", LineNo, RecRef, FieldNo, OldText, NewText);
-            end;
+        foreach FieldNo in ChangedFields do begin
+            OldText := '';
+            NewText := '';
+            if OldValues.ContainsKey(FieldNo) and (Kind <> Kind::Created) then
+                OldText := OldValues.Get(FieldNo);
+            if NewValues.ContainsKey(FieldNo) and (Kind <> Kind::Deleted) then
+                NewText := NewValues.Get(FieldNo);
+            LineNo += 10000;
+            AddLine(FieldChange, Entry."Entry No.", LineNo, RecRef, FieldNo, OldText, NewText);
         end;
-        Entry."Field Count" := LineNo div 10000;
-        Entry.Modify();
     end;
 
     local procedure InitEntry(var Entry: Record "Bcmag Change Entry"; Kind: Enum "Bcmag Change Kind")
@@ -170,8 +182,8 @@ codeunit 94158 "Bcmag Change Recorder"
         FieldChange."Stored As" := Access;
         if (Setup."Record Changes" = Setup."Record Changes"::OldAndNewValues) and (Access <> Access::Hidden) and not IsBinary(FldRef) then begin
             if Access = Access::Masked then begin
-                if OldText <> '' then OldText := Masker.MaskText(OldText, ProfileCode);
-                if NewText <> '' then NewText := Masker.MaskText(NewText, ProfileCode);
+                if OldText <> '' then OldText := Masker.MaskStoredText(OldText, FldRef.Type(), ProfileCode);
+                if NewText <> '' then NewText := Masker.MaskStoredText(NewText, FldRef.Type(), ProfileCode);
             end;
             FieldChange."Old Value" := Fit(OldText, Cut);
             FieldChange.Truncated := Cut;
@@ -202,7 +214,7 @@ codeunit 94158 "Bcmag Change Recorder"
     begin
         RecRef.Open(TableId);
         RecRef.Init();
-        Values := Snapshot(RecRef);
+        Values := TakeSnapshot(RecRef);
         RecRef.Close();
     end;
 
@@ -223,6 +235,7 @@ codeunit 94158 "Bcmag Change Recorder"
     local procedure ValueText(var FldRef: FieldRef): Text
     var
         Ordinal: Integer;
+        OptionName: Text;
     begin
         case FldRef.Type() of
             FieldType::Blob:
@@ -241,10 +254,20 @@ codeunit 94158 "Bcmag Change Recorder"
             FieldType::Option:
                 begin
                     Ordinal := FldRef.Value();
-                    exit(FldRef.GetEnumValueNameFromOrdinalValue(Ordinal));
+                    // A stored ordinal that is no longer a member (an enum value an uninstalled
+                    // extension added) raises here; the write must not fail on it.
+                    if TryOptionName(FldRef, Ordinal, OptionName) then
+                        exit(OptionName);
+                    exit(Format(Ordinal, 0, 9));
                 end;
         end;
         exit(Format(FldRef.Value(), 0, 9));
+    end;
+
+    [TryFunction]
+    local procedure TryOptionName(var FldRef: FieldRef; Ordinal: Integer; var OptionName: Text)
+    begin
+        OptionName := FldRef.GetEnumValueNameFromOrdinalValue(Ordinal);
     end;
 
     local procedure HasBlobValue(var FldRef: FieldRef): Boolean

@@ -315,7 +315,7 @@ codeunit 94106 "Bcmag Projector"
         EnsureHashFields(RecRef.Number);
         foreach FieldNo in HashFieldNos do
             if RecRef.FieldExist(FieldNo) then begin
-                Builder.Append(Format(FieldNo));
+                Builder.Append(Format(FieldNo, 0, 9)); // invariant: the default format groups digits by the session's region
                 Builder.Append('=');
                 Builder.Append(Format(RecRef.Field(FieldNo).Value, 0, 9));
                 Builder.Append(';');
