@@ -169,7 +169,7 @@ codeunit 94325 "Bcmag Permission Set Test"
         AssertExecute('Wicket Data - Read', Codeunit::"Bcmag Op Query", true);
         AssertExecute('Wicket Data - Read', Codeunit::"Bcmag Op Insert", false);
         AssertExecute('Wicket Data - Read', Codeunit::"Bcmag Op Invoke", false);
-        AssertNoDeleteAnywhere('Wicket Data - Read');
+        AssertNoDeleteAnywhereExceptGates('Wicket Data - Read');
     end;
 
     [Test]
@@ -202,11 +202,26 @@ codeunit 94325 "Bcmag Permission Set Test"
     end;
 
     // ---- Role gates ------------------------------------------------------------------------------
-    // Two empty sentinel tables turn "which rung is the caller on" into a question the platform answers:
-    // the dispatcher checks Record.WritePermission on the Execute Gate before invoke/action and on the
-    // Write Gate before insert/modify/delete, and answers a typed 403 role-forbidden instead of letting
+    // Three empty sentinel tables turn "which rung is the caller on" into a question the platform answers:
+    // the dispatcher checks Record.WritePermission on the Read Gate before any operation, on the Execute
+    // Gate before invoke/action and on the Write Gate before insert/modify/delete, and answers a typed 403 role-forbidden instead of letting
     // the platform's Execute denial surface as a 500. A rung grants RIMD on its gate and nothing below
     // it does; a tabledata wildcard (Data - Read/Execute) yields Read only, which does not open a gate.
+
+    [Test]
+    procedure ReadGateOpensAtTheReadRungAndNotForTheViewerSets()
+    begin
+        // The viewer sets carry the object rung (their pages need it) but are not callers.
+        AssertTableData('Wicket - Audit', Database::"Bcmag Read Gate", false, false, false, false);
+        AssertTableData('Wicket - Changes', Database::"Bcmag Read Gate", false, false, false, false);
+        AssertTableData('Wicket - Unmask', Database::"Bcmag Read Gate", false, false, false, false);
+        AssertTableData('Wicket - Read', Database::"Bcmag Read Gate", true, true, true, true);
+        AssertTableData('Wicket - Execute', Database::"Bcmag Read Gate", true, true, true, true);
+        AssertTableData('Wicket - Edit', Database::"Bcmag Read Gate", true, true, true, true);
+        AssertTableData('Wicket - Admin', Database::"Bcmag Read Gate", true, true, true, true);
+        AssertTableData('Wicket Data - Read', Database::"Bcmag Read Gate", true, true, true, true);
+        AssertTableData('Wicket Data - Exec', Database::"Bcmag Read Gate", true, true, true, true);
+    end;
 
     [Test]
     procedure ExecuteGateOpensAtTheExecuteRungOnly()
@@ -327,7 +342,7 @@ codeunit 94325 "Bcmag Permission Set Test"
     begin
         if FindRow(RoleId, ObjTypeTableData(), 0, Perm) then
             exit(Perm."Read Permission" = Perm."Read Permission"::Yes);
-        if FindRow(RoleId, ObjTypeTableData(), Database::Company, Perm) then
+        if FindRow(RoleId, ObjTypeTableData(), Database::User, Perm) then
             exit(Perm."Read Permission" = Perm."Read Permission"::Yes);
         exit(false);
     end;
@@ -401,7 +416,7 @@ codeunit 94325 "Bcmag Permission Set Test"
         FilterRole(RoleId, Perm);
         Perm.SetRange("Object Type", ObjTypeTableData());
         Perm.SetRange("Delete Permission", Perm."Delete Permission"::Yes);
-        Perm.SetFilter("Object ID", '<>%1&<>%2', Database::"Bcmag Execute Gate", Database::"Bcmag Write Gate");
+        Perm.SetFilter("Object ID", '<>%1&<>%2&<>%3', Database::"Bcmag Read Gate", Database::"Bcmag Execute Gate", Database::"Bcmag Write Gate");
         LibraryAssert.IsTrue(Perm.IsEmpty(), StrSubstNo('"%1" must not grant Delete on any table other than the role gates', RoleId));
     end;
 

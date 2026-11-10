@@ -10,6 +10,7 @@ table 94300 "Bcmag Test Record"
     {
         field(1; "Code"; Code[20]) { Caption = 'Code'; }
         field(2; Name; Text[100]) { Caption = 'Name'; }
+        field(3; Note; Blob) { Caption = 'Note'; }
     }
 
     keys { key(PK; "Code") { Clustered = true; } }

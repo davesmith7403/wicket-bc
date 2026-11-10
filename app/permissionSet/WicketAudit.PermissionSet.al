@@ -3,7 +3,8 @@ permissionset 94106 "Wicket - Audit"
     // CONTROL-PLANE VIEWER (support, security review, auditors). Opens every Wicket admin page and
     // reads every Wicket table — the operation log, the idempotency log, the request queue, the
     // exposure allowlist, the catalogs and the setup card — but cannot change any of it: no I/M/D,
-    // no log purge, no credential prompt. The queue page's Cancel action fails at the platform
+    // no log purge, no credential prompt. It is a viewer, not a caller: it holds the object rung for
+    // its pages but not the Read Gate, so the endpoint answers it 403 role-forbidden on every operation. The queue page's Cancel action fails at the platform
     // Modify check for this role, and the setup card opens read-only.
     //
     // Note the log/queue tables hold EVERY principal's rows (request ids, origins, problem details,

@@ -12,7 +12,7 @@ There are three distinct version numbers; do not conflate them.
 |---|---|---|---|
 | **URL major version** | the `v1.0` segment in `/api/wicket/rpc/v1.0/...` (the API page's `APIVersion`) | a **breaking wire change** is unavoidable | new path; old path stays online for the deprecation window |
 | **Data schema version** | `schemaVersion` in `describe` and `capabilities` responses (currently `"1.0"`) | the shape of an operation's `data` / result changes in a way callers can branch on | additive changes do **not** force a new URL |
-| **Extension version** | `app.json` `version` (currently `1.4.1.0`) | any release | release/upgrade tracking only; not a wire contract |
+| **Extension version** | `app.json` `version` (currently `1.4.2.0`) | any release | release/upgrade tracking only; not a wire contract |
 
 The URL segment is the only hard compatibility boundary. `app.json` can go from `1.3` to `1.9`
 shipping new operations and fields without ever touching the URL, as long as the additive rule below holds.
@@ -72,6 +72,30 @@ a new path leaf — e.g. `queryV2` — leaving the rest of `v1.0` intact.)
   guidance — the runtime truth is `capabilities`/`describe`.
 
 ## Current state
+
+- **Version 1.4.2.0** (companion unchanged at `0.3.1.0`; MCP server and plugin unchanged at `2.6.1`):
+  what finishing the restricted-identity tests found. No new operation or Setup field, no upgrade
+  code. One new object: table 94118 `Bcmag Read Gate`, an empty role-gate table.
+- **Stricter on the wire in 1.4.2.0:**
+  - Every operation now needs the Read rung. A principal holding only `Wicket - Audit` or
+    `Wicket - Audit Changes` (viewer sets, which carry the object rung for their pages) is answered
+    `403 role-forbidden` on every operation. Before, it ran whatever read operations its other rights
+    allowed, and because those sets cannot insert into the Operation Log, the calls left no audit
+    row; a keyed request raised a raw permission error at the idempotency reservation.
+  - That refusal is decided before the idempotency reservation and is not snapshotted, so the same
+    key runs once the caller set is assigned.
+  - A custom permission set that copies the object grants of `Wicket - Read` instead of including it
+    must add `tabledata "Bcmag Read Gate" = RIMD`. A set that includes `Wicket - Read` (or any rung
+    above it, or a `Wicket Data` set) needs nothing.
+- **Fixed in 1.4.2.0:** `discover` with `kind: "companies"` answered `500` for a caller without a data
+  set; `Wicket - Read` now grants Read on the `Company` table.
+- **Corrected in the documentation:** the companion's set `Wicket Actions` is not sufficient on its
+  own next to the Wicket sets. Business Central checks Execute on every codeunit a wrapper's Base
+  Application routine calls in turn, so the caller also needs a Business Central set that carries
+  object execution (`D365 BASIC` does). `item-availability` answers
+  `422 action-failed` with the three Wicket sets alone and `200` with `D365 BASIC` added.
+
+## State at 1.4.1.0
 
 - **Version 1.4.1.0** (companion `0.3.1.0`, AL-Go `repoVersion` `1.4`; plugin and MCP server `2.6.1`).
   A fix release with no new operation, table or Setup field and no upgrade code. **Upgrade from

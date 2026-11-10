@@ -20,6 +20,7 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
         AsyncEnqueuer: Codeunit "Bcmag Async Enqueuer";
         Guard: Codeunit "Bcmag Idempotency Guard";
         Authorizer: Codeunit "Bcmag Op Authorizer";
+        RoleGate: Codeunit "Bcmag Role Gate";
         // The current request's data, for the audit row (table, target, request details). Set once the
         // envelope parses and cleared at every request start: one dispatcher instance serves many calls.
         AuditData: JsonObject;
@@ -105,6 +106,17 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
         // Only the 400 envelope refusal above precedes it; it reads no policy and logs no lifts.
         RunnerCtx.SetRequest(Operation, Data);
         RunnerCtx.SetEnvelope(Id, Origin);
+
+        // A principal without a data-plane rung is refused before anything is reserved, replayed or
+        // run: it cannot write the idempotency tables (the reservation would raise instead of answering)
+        // or the Operation Log. Never snapshotted — the same key runs once the role is assigned.
+        if not RoleGate.CheckCaller(Operation, Fail) then begin
+            Result := Problem.FromFailure(Fail, Operation, Id);
+            Status := Problem.StatusOf(Fail);
+            FinishRequest(Id, IdempotencyKey, Operation, Origin, Caller, Status, 0, StartedAt,
+                Problem.ProblemTypeOf(Fail), Problem.DetailOf(Fail));
+            exit(Result);
+        end;
 
         // Posting through a wrapper COMMITS; without a key, a caller that loses the response (timeout,
         // dropped connection) cannot find out whether it took effect except by reconciling business

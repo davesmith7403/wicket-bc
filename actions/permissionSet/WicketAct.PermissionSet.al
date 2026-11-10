@@ -10,6 +10,10 @@ permissionset 94200 "Wicket Act"
     // only read the headers/lines, and the posting codeunits do the writes under those standard sets.
     // Composes with the core's ladder: the calling principal needs at least "Wicket - Execute" (Execute
     // on the invoke/action handlers) plus this set; "Wicket - Read" alone cannot reach a wrapper.
+    // It is not sufficient next to the Wicket sets alone: Business Central checks Execute on every
+    // codeunit the Base Application routines below call in turn, so the principal also needs a Business
+    // Central set that carries object execution (D365 BASIC does). Without one a wrapper answers
+    // 422 action-failed naming the first codeunit it could not run.
     Assignable = true;
     Caption = 'Wicket Actions';
     Permissions =

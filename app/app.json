@@ -2,7 +2,7 @@
   "id": "4057cf1f-1b34-409a-a570-c6fdf625c434",
   "name": "Wicket",
   "publisher": "Dave The Wicketkeeper",
-  "version": "1.4.1.0",
+  "version": "1.4.2.0",
   "brief": "Generic JSON RPC over Business Central — eighteen operations for LLM agents",
   "description": "Wicket exposes eighteen generic operations through a single API page: discover/describe/query/readBlob for reading, insert/modify/delete for writing, invoke and the named-action catalog for running enrolled business logic, status/cancel/requests for asynchronous delivery of large queries to Azure Blob Storage, and capabilities/skill/pageUrl/whoAmI for self-description. Deny-by-default table exposure and field-level policy, RFC 7807 problems, optimistic concurrency, idempotent writes, App Insights telemetry, and full operation logging. Designed for LLM agents.",
   "platform": "26.0.0.0",

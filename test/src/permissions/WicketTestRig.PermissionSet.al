@@ -11,6 +11,8 @@ permissionset 94300 "Wicket Test Rig"
         tabledata "Bcmag Test Record" = RIMD,
         codeunit "Bcmag Restricted Identity Test" = X,
         codeunit "Bcmag Test Helper" = X,
+        // The wrapper a provider's own set would grant (the core sets grant only the Ping sample).
+        codeunit "Bcmag Echo Args Wrapper" = X,
         codeunit "Permissions Mock" = X,
         codeunit "Library Assert" = X;
 }

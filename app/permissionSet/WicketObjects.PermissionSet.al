@@ -8,6 +8,8 @@ permissionset 94102 "Wicket - Objects"
     //   - invoke / action wrappers ......... "Wicket - Execute"
     //   - insert / modify / delete ......... "Wicket - Edit"
     //   - log purge + admin pages .......... "Wicket - Audit" / "Wicket - Admin"
+    // The viewer sets include this set too (their pages need the objects) without being callers: the
+    // "Bcmag Read Gate", granted from "Wicket - Read" up, is what the dispatcher asks before any operation.
     // Execute on a codeunit is checked by the platform on first call, so a principal holding only
     // this set (through "Wicket - Read") cannot run the write or invoke handlers at all — the
     // dispatcher's Read-Only Mode is a second, tenant-wide gate on top of this per-principal one.
@@ -28,6 +30,7 @@ permissionset 94102 "Wicket - Objects"
         table "Bcmag Action Catalog" = X,
         table "Bcmag Execute Gate" = X,
         table "Bcmag Write Gate" = X,
+        table "Bcmag Read Gate" = X,
         table "Bcmag Classification Rule" = X,
         table "Bcmag Mask Profile" = X,
         table "Bcmag Access Exception" = X,

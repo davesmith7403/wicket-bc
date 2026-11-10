@@ -29,7 +29,12 @@ permissionset 94103 "Wicket - Read"
     Caption = 'Wicket - Read';
     IncludedPermissionSets = "Wicket - Objects";
     Permissions =
+        // Rung sentinel (empty table): RIMD here is what lets the dispatcher route ANY operation for this
+        // principal. The viewer sets hold the object rung without it and are refused with a typed 403.
+        tabledata "Bcmag Read Gate" = RIMD,
         tabledata "Bcmag Setup" = RI,
+        // discover kind "companies" lists the companies of the environment.
+        tabledata Company = R,
         // discover/describe report which installed app owns a table; capabilities fingerprints them.
         tabledata "NAV App Installed App" = R,
         tabledata "Bcmag Exposure" = R,

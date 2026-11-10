@@ -741,12 +741,12 @@ Authorization: Bearer &lt;token&gt;
 <tr>
 <td><code>Wicket - Audit</code></td>
 <td>Support, security review</td>
-<td>Opens every Wicket admin page and reads every Wicket table, including the logs, the request queue and the change history (it includes <code>Wicket - Audit Changes</code>). Cannot change anything, purge logs or enter credentials.</td>
+<td>Opens every Wicket admin page and reads every Wicket table, including the logs, the request queue and the change history (it includes <code>Wicket - Audit Changes</code>). Cannot change anything, purge logs or enter credentials. It is a viewer, not a caller: on its own the endpoint answers it <code>403 role-forbidden</code>.</td>
 </tr>
 <tr>
 <td><code>Wicket - Audit Changes</code></td>
 <td>The customer&#39;s administrator, who reviews what the agent changed</td>
-<td>Opens <strong>Wicket Changes</strong> and reads every user&#39;s entries; through the <code>changes</code> operation, a caller holding it sees every user&#39;s changes and may filter by <code>user</code>. Included by <code>Wicket - Audit</code> and so by <code>Wicket - Admin</code>. Role ID <code>WICKET - CHANGES</code>.</td>
+<td>Opens <strong>Wicket Changes</strong> and reads every user&#39;s entries; through the <code>changes</code> operation, a caller holding it sees every user&#39;s changes and may filter by <code>user</code>. Included by <code>Wicket - Audit</code> and so by <code>Wicket - Admin</code>. On its own it opens the page, not the endpoint: calling <code>changes</code> also needs a caller set (<code>Wicket - Read</code> or higher). Role ID <code>WICKET - CHANGES</code>.</td>
 </tr>
 <tr>
 <td><code>Wicket - Admin</code></td>
@@ -817,6 +817,8 @@ Authorization: Bearer &lt;token&gt;
 <li><code>Wicket Data - Read</code> uses <code>tabledata * = R</code>. The wildcard spans every extension and every system table in the tenant; that is what &quot;read any information&quot; means. Inside Wicket the exposure list and the field policy still apply, so the wildcard only supplies the Business Central side of the check.</li>
 <li><code>Wicket Data - Exec</code> grants Execute on every codeunit, Wicket&#39;s own write handlers included: a permission set cannot carve an exception out of a wildcard. The generic write plane nevertheless stays closed to it because the dispatcher routes <code>insert</code>/<code>modify</code>/<code>delete</code> only for principals that can write the <code>Bcmag Write Gate</code> table, which only <code>Wicket - Edit</code> grants. Separately, an object that carries its own <code>Permissions</code> property can write while it runs, which is how posting routines create ledger entries for users who hold no ledger permission. The set therefore means &quot;cannot write directly&quot;, not &quot;cannot cause a write&quot;. For production prefer <code>Wicket Data - Read</code> + <code>Wicket - Execute</code> + the provider&#39;s own wrapper set, which names exactly the codeunits in scope.</li>
 <li>Permission sets are additive. No Wicket set restricts what a principal holds elsewhere; the role gates restrict only what Wicket itself will route.</li>
+<li>Every operation needs a caller set: <code>Wicket - Read</code> or a set that includes it. A principal that holds only a viewer set (<code>Wicket - Audit</code>, <code>Wicket - Audit Changes</code>) reaches the endpoint, because those sets carry the objects their pages need, and is refused with <code>403 role-forbidden</code> (since 1.4.2.0). Before that it could run the read operations its other rights allowed without a row in the Operation Log.</li>
+<li><code>Wicket Actions</code> grants Execute on the companion&#39;s wrappers and on the Base Application routines they call directly. Business Central also checks Execute on every codeunit those routines call in turn, so the caller needs a Business Central set that carries object execution as well; <code>D365 BASIC</code> does. With only the Wicket sets, an action answers <code>422 action-failed</code> naming the first codeunit it could not run. Posting additionally needs Business Central&#39;s own posting sets.</li>
 <li>A principal whose role is below an operation is refused before the handler runs with a <code>403 role-forbidden</code> problem whose detail names the permission set required. Do not retry; assign that rung.</li>
 <li><code>SUPER</code> cannot be assigned to an application identity. For sandbox testing <code>D365 BUS PREMIUM</code> is an acceptable data set.</li>
 </ul>
@@ -3151,6 +3153,12 @@ cp .env.example .env
 <td>94117</td>
 <td>Bcmag Changes Gate</td>
 <td>Empty sentinel table; write rights granted only by <code>Wicket - Audit Changes</code> (and the sets that include it)</td>
+</tr>
+<tr>
+<td>Table</td>
+<td>94118</td>
+<td>Bcmag Read Gate</td>
+<td>Empty role-gate table; write rights granted from <code>Wicket - Read</code> up. Every operation asks for it</td>
 </tr>
 <tr>
 <td>Page</td>

@@ -13,11 +13,11 @@ business actions, and export asynchronously against BC safely and without bespok
 It is deny-by-default, returns RFC 7807 problem documents, enforces optimistic concurrency, logs
 every call, and emits Application Insights telemetry.
 
-- App: `app/app.json` → `Wicket`, version `1.4.1.0`, publisher `Dave The Wicketkeeper`, object range `94100–94199`.
+- App: `app/app.json` → `Wicket`, version `1.4.2.0`, publisher `Dave The Wicketkeeper`, object range `94100–94199`.
 - Companion app: [`actions/`](actions/) → `Wicket Actions - Base`, version `0.3.1.0`, object range
   `94200–94249` — the Base-App-dependent action providers (posting wrappers). Optional.
 - Status: **full read/write/invoke plane, batch writes, change history, named actions, field-level
-  policy, and async Azure Blob delivery built.** 454 core AL tests and 38 companion tests; see [Status](#status) for what is
+  policy, and async Azure Blob delivery built.** 475 core AL tests and 41 companion tests; see [Status](#status) for what is
   still unverified.
 
 ## What it is
@@ -312,9 +312,12 @@ wrappers enforce Gen. Jnl.-Post's refusals (Force Posting Report, Job G/L WIP so
   filter), `Wicket - Audit` (read-only view of every admin page and log; includes Audit Changes) and
   `Wicket - Admin` (the control plane: exposure, setup, catalogs, credential, log purge). Each step
   grants Execute on the handler codeunits it names **and** full rights on one empty **role-gate**
-  table (`Bcmag Execute Gate` from Execute up, `Bcmag Write Gate` from Edit up). The dispatcher checks
-  `WritePermission` on the gate before routing `invoke`/`action` or `insert`/`modify`/`delete`, so a
-  principal below the rung gets a typed `403 role-forbidden` with no side effects — even when Read-Only
+  table (`Bcmag Read Gate` from Read up, `Bcmag Execute Gate` from Execute up, `Bcmag Write Gate` from
+  Edit up). The dispatcher checks `WritePermission` on the Read Gate before any operation and on the
+  gate above it before routing `invoke`/`action` or `insert`/`modify`/`delete`/`batch`, so a
+  principal below the rung gets a typed `403 role-forbidden` with no side effects. That includes a
+  holder of only `Wicket - Audit` or `Wicket - Audit Changes`: those sets open pages, they do not make
+  a caller. The refusal holds even when Read-Only
   Mode is off, its other sets allow the table write, or it holds a `codeunit * = X` wildcard (permission
   sets are additive and cannot carve an exception out of a wildcard; the gate can). None of these
   grants business data; `Wicket Data - Read` (`tabledata * = R` + table/page/query Execute) and
@@ -408,8 +411,14 @@ Verification status:
 - **Live SaaS sandbox** (BC 28): the core and companion suites (`test/`, `actions-test/`) also run
   headless against a cloud sandbox through the test-runner web service, together with live HTTP
   calls through the published bound actions.
+- **Restricted identities:** `Bcmag Restricted Identity Test` (94349) and `Bcmag Act Restricted Test`
+  (94354) call the dispatcher holding exactly one Wicket permission set, through Microsoft's
+  Permissions Mock: every operation under each rung, the data sets, the viewer sets and Admin.
+  Business Central checks execute on a codeunit only the first time it runs in a session, so a run
+  of such a codeunit alone is the proof of the execute grants; in a run of the whole suite they prove
+  the table rights and the gates.
 - **Still pending:** an async delivery round-trip against real Azure Storage (the Service SAS
-  string-to-sign is still unverified against Azure) and a restricted-identity permission matrix.
+  string-to-sign is still unverified against Azure).
 
 ## License
 
