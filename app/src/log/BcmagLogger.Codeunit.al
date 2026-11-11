@@ -176,6 +176,10 @@ codeunit 94103 "Bcmag Logger"
         exit(Operation in ['query', 'readBlob', 'batch']);
     end;
 
+    // Inherent (upper case = direct): every caller set grants this insert anyway; the inherent right is
+    // for the principal that holds none, a viewer set refused at the role gate, whose attempt would
+    // otherwise leave no row. The row's content is built above from the request, never by the caller.
+    [InherentPermissions(PermissionObjectType::TableData, Database::"Bcmag Operation Log", 'I')]
     [TryFunction]
     local procedure TryInsertOperation(var Log: Record "Bcmag Operation Log")
     begin

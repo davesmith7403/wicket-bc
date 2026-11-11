@@ -30,6 +30,20 @@ codeunit 94139 "Bcmag Async Cancel"
         exit(true);
     end;
 
+    // The queue page's Cancel. The page lists every principal's requests and the Read rung may modify
+    // queue rows (its own worker needs that), so the table right alone would let any caller with the
+    // page cancel anyone's request. Another principal's request is an administrator's to cancel.
+    procedure CancelFromPage(var Row: Record "Bcmag Request Queue")
+    var
+        Setup: Record "Bcmag Setup";
+        NotYoursErr: Label 'Only a Wicket administrator (permission set Wicket - Admin) can cancel another user''s request.';
+    begin
+        if Row.Caller <> UserSecurityId() then
+            if not Setup.WritePermission() then
+                Error(NotYoursErr);
+        CancelRow(Row);
+    end;
+
     // Decided on a fresh read under LockTable, never on the caller's (possibly stale) copy: the worker
     // takes the same lock to promote Queued -> Running and to finalise, so the two cannot interleave.
     //   Scheduled  not started: cancel the platform task (if still live) and finalise Cancelled.

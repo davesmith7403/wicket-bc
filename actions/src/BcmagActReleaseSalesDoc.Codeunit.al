@@ -5,7 +5,7 @@ codeunit 94211 "Bcmag Act Release Sales Doc"
     // page. It enforces the approval workflow (pending approval is refused) and prepayments (an order with
     // an unpaid prepayment becomes Pending Prepayment and is refused).
     // args:   { systemId | documentType + no }
-    // result: { released: true, sourceDocumentType, sourceNo, status, changed } — status is the invariant name
+    // result: { released, sourceDocumentType, sourceNo, status, changed } — status is the invariant name
     //         after the call; changed is false when the document was already released.
 
     trigger OnRun()
@@ -21,7 +21,8 @@ codeunit 94211 "Bcmag Act Release Sales Doc"
         Before := SalesHeader.Status;
         ReleaseSalesDoc.PerformManualRelease(SalesHeader);
         SalesHeader.Get(SalesHeader."Document Type", SalesHeader."No.");
-        Result.Add('released', true);
+        // Release can end in another status without raising: say what happened, not what was asked for.
+        Result.Add('released', SalesHeader.Status = SalesHeader.Status::Released);
         Result.Add('sourceDocumentType', Resolver.SalesDocTypeName(SalesHeader."Document Type"));
         Result.Add('sourceNo', SalesHeader."No.");
         Result.Add('status', Resolver.SalesStatusName(SalesHeader.Status));

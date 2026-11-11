@@ -63,7 +63,10 @@ codeunit 94354 "Bcmag Act Restricted Test"
         Become(DataReadSetTok + '|' + ExecuteSetTok + '|' + ActSetTok + '|' + BasicSetTok);
         Response := Helper.RunAction(Helper.ActionData('post-sales', SalesHeader.SystemId, Args), Helper.NewIdemKey(), Status);
         PermissionsMock.Stop();
-        LibraryAssert.IsTrue((Status >= 400) and (Status < 500), 'posting without posting rights is a typed refusal: ' + Helper.Describe(Response));
+        Helper.AssertProblem(Status, Response, 422, 'action-failed', 'posting without posting rights');
+        // Every wrapper failure is a 422: the text shows it was the poster that failed, not the lookup
+        // of the document or the approval check before it.
+        LibraryAssert.IsTrue(StrPos(Helper.Txt(Response, 'detail'), 'posting sales Invoice') = 1, 'the call reached Sales-Post: ' + Helper.Describe(Response));
         LibraryAssert.IsTrue(SalesHeader.Get(SalesHeader."Document Type", SalesHeader."No."), 'and the invoice is still there, unposted');
         // Without the delete triggers: they fill number-series gaps with archive documents and say so
         // in a message.

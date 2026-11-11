@@ -44,13 +44,20 @@ codeunit 94146 "Bcmag Role Gate"
     // it cannot write the Operation Log, the idempotency tables or the request queue, so letting it run
     // would mean reads with no audit row and raw permission errors where a table write is needed.
     procedure CheckCaller(Operation: Text; var Fail: JsonObject): Boolean
+    begin
+        if IsCaller() then
+            exit(true);
+        Fail := Problem.NewFailure(403, 'role-forbidden', 'Operation not permitted for this role',
+            StrSubstNo('operation "%1" requires the "Wicket - Read" permission set or a set that includes it; the calling principal holds none. "Wicket - Audit" and "Wicket - Audit Changes" open the Wicket pages and do not make a caller. Retrying will not help — an administrator must assign the set.', Operation));
+        exit(false);
+    end;
+
+    // True when the principal holds the Read rung or above.
+    procedure IsCaller(): Boolean
     var
         ReadGate: Record "Bcmag Read Gate";
     begin
-        if ReadGate.WritePermission() then
-            exit(true);
-        Fail := Refusal(Operation, 'Wicket - Read');
-        exit(false);
+        exit(ReadGate.WritePermission());
     end;
 
     local procedure Refusal(Operation: Text; RequiredRole: Text) Fail: JsonObject

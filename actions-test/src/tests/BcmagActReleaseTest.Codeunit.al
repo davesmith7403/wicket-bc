@@ -72,6 +72,32 @@ codeunit 94357 "Bcmag Act Release Test"
     end;
 
     [Test]
+    procedure AnOrderWithAnUninvoicedPrepaymentIsNotReleased()
+    var
+        PurchHeader: Record "Purchase Header";
+        PurchLine: Record "Purchase Line";
+        Args, Response : JsonObject;
+        VendNo, GLAccNo : Code[20];
+        Status: Integer;
+    begin
+        // Business Central refuses to release an order whose prepayment is not invoiced yet; the answer
+        // is that refusal, and the order stays open.
+        Helper.Initialize();
+        Helper.FindPurchaseFixture(VendNo, GLAccNo);
+        Helper.CreatePurchaseDoc("Purchase Document Type"::Order, VendNo, GLAccNo, PurchHeader);
+        PurchLine.Get(PurchHeader."Document Type", PurchHeader."No.", 10000);
+        PurchLine."Prepayment %" := 50;
+        PurchLine."Prepmt. Line Amount" := Round(PurchLine."Line Amount" / 2);
+        PurchLine.Modify();
+
+        Response := Helper.RunAction(Helper.ActionData('release-purchase', PurchHeader.SystemId, Args), Helper.NewIdemKey(), Status);
+        Helper.AssertProblem(Status, Response, 422, 'action-failed', 'release with an uninvoiced prepayment');
+        LibraryAssert.IsTrue(StrPos(Helper.Txt(Response, 'detail'), 'prepayment') > 0, 'the refusal is Business Central''s: ' + Helper.Describe(Response));
+        PurchHeader.Get(PurchHeader."Document Type", PurchHeader."No.");
+        LibraryAssert.IsTrue(PurchHeader.Status = PurchHeader.Status::Open, 'the order is still open');
+    end;
+
+    [Test]
     procedure ReopenIsRefusedWhileApprovalIsPending()
     var
         SalesHeader: Record "Sales Header";

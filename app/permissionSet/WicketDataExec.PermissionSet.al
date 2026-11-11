@@ -24,9 +24,10 @@ permissionset 94111 "Wicket Data - Exec"
     // 3. Permission sets are ADDITIVE. This set restricts nothing a principal holds elsewhere; it only
     //    adds. Do not read it as a ceiling.
     // Least-privilege alternative for production: "Wicket Data - Read" + "Wicket - Execute" + the
-    // provider's own wrapper set (e.g. "Wicket Act"), which names exactly the codeunits in scope — plus
-    // a Business Central set that carries object execution (D365 BASIC does): the platform checks
-    // Execute on every codeunit a wrapper's Base Application routine calls in turn.
+    // provider's own wrapper set (e.g. "Wicket Act") — plus a Business Central set that carries object
+    // execution (D365 BASIC does): the platform checks Execute on every codeunit a wrapper's Base
+    // Application routine calls in turn. Such a set grants Execute on every codeunit, so in practice the
+    // SCOPE is what is enrolled and enabled in the catalogs, not which wrapper set the principal holds.
     Assignable = true;
     Caption = 'Wicket Data - Execute';
     IncludedPermissionSets = "Wicket - Execute", "Wicket Data - Read";

@@ -135,6 +135,63 @@ codeunit 94351 "Bcmag Act Sales Test"
     end;
 
     [Test]
+    procedure TheUsersInvoicePostingPolicyIsHonoured()
+    var
+        SalesHeader: Record "Sales Header";
+        UserSetup: Record "User Setup";
+        Args, Response: JsonObject;
+        CustNo, GLAccNo: Code[20];
+        Status: Integer;
+        HadSetup: Boolean;
+        Before: Enum "Invoice Posting Policy";
+    begin
+        // User Setup can forbid a user to invoice the orders it ships, or oblige it to do both together.
+        // The Post action applies that; Sales-Post takes Ship and Invoice as given, so the wrapper must.
+        Helper.Initialize();
+        Helper.FindSalesFixture(CustNo, GLAccNo);
+        Helper.CreateSalesDoc("Sales Document Type"::Order, CustNo, GLAccNo, SalesHeader);
+        HadSetup := UserSetup.Get(UserId());
+        if not HadSetup then begin
+            UserSetup.Init();
+            UserSetup."User ID" := CopyStr(UserId(), 1, MaxStrLen(UserSetup."User ID"));
+            UserSetup.Insert();
+        end;
+        Before := UserSetup."Sales Invoice Posting Policy";
+
+        UserSetup."Sales Invoice Posting Policy" := UserSetup."Sales Invoice Posting Policy"::Prohibited;
+        UserSetup.Modify();
+        Response := Helper.RunAction(Helper.ActionData(PostSalesTok, SalesHeader.SystemId, Args), '', Status);
+        Helper.AssertProblem(Status, Response, 422, 'action-failed', 'ship and invoice under Prohibited');
+        LibraryAssert.IsTrue(StrPos(Helper.Txt(Response, 'detail'), 'Prohibited') > 0, 'the refusal names the policy: ' + Helper.Describe(Response));
+        SalesHeader.Get(SalesHeader."Document Type", SalesHeader."No.");
+        LibraryAssert.AreEqual('', SalesHeader."Last Shipping No.", 'nothing was shipped');
+
+        UserSetup.Get(UserId());
+        UserSetup."Sales Invoice Posting Policy" := UserSetup."Sales Invoice Posting Policy"::Mandatory;
+        UserSetup.Modify();
+        Args.Add('ship', true);
+        Args.Add('invoice', false);
+        Response := Helper.RunAction(Helper.ActionData(PostSalesTok, SalesHeader.SystemId, Args), '', Status);
+        Helper.AssertProblem(Status, Response, 422, 'action-failed', 'ship only under Mandatory');
+        LibraryAssert.IsTrue(StrPos(Helper.Txt(Response, 'detail'), 'Mandatory') > 0, 'the refusal names the policy: ' + Helper.Describe(Response));
+
+        UserSetup.Get(UserId());
+        UserSetup."Sales Invoice Posting Policy" := UserSetup."Sales Invoice Posting Policy"::Prohibited;
+        UserSetup.Modify();
+        Response := Helper.RunAction(Helper.ActionData(PostSalesTok, SalesHeader.SystemId, Args), '', Status);
+        Helper.AssertOk(Status, Response, 'ship only under Prohibited');
+        LibraryAssert.IsFalse(Helper.ValueOf(Response).Contains('postedInvoiceNo'), 'shipped, not invoiced: ' + Helper.Describe(Response));
+
+        UserSetup.Get(UserId());
+        if HadSetup then begin
+            UserSetup."Sales Invoice Posting Policy" := Before;
+            UserSetup.Modify();
+        end else
+            UserSetup.Delete();
+        Commit();
+    end;
+
+    [Test]
     procedure SalesCreditMemoReturnsPostedCreditMemoNo()
     var
         SalesHeader: Record "Sales Header";

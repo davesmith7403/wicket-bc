@@ -206,6 +206,10 @@ codeunit 94201 "Bcmag Act Install"
             // administrator who set it to true (to keep, say, document-pdf off a read-only endpoint) keeps
             // that choice across upgrades.
             IsMutating := IsMutating or Catalog."Is Mutating";
+            // Preview Supported likewise: a preview passes Read-Only Mode and needs no key, so an
+            // administrator who switched it off keeps it off. An upgrade only ever switches it off (a
+            // wrapper that lost its preview); a preview that is new in a version is switched on by hand.
+            PreviewSupported := PreviewSupported and Catalog."Preview Supported";
             if Refresh then
                 if StaleAction(Catalog, WrapperId, Category, IsMutating, PreviewSupported, Description, ArgsSchema) then begin
                     SetActionFields(Catalog, WrapperId, Category, IsMutating, PreviewSupported, Description, ArgsSchema);

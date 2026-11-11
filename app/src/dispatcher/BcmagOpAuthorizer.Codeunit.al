@@ -423,9 +423,13 @@ codeunit 94148 "Bcmag Op Authorizer"
     // A stored changes answer carries field values as the policy showed them then. It replays only
     // while the agent may still read the history and every value it shows is still shown at least as
     // clearly today: "clear" needs the field Clear and its table readable, "masked" needs it readable.
+    // And it replays another user's entries only while the caller still holds the Changes Gate
+    // (Wicket - Audit Changes): without it a fresh call shows the caller's own changes and no one else's.
     local procedure CheckChangesValue(Cached: JsonObject; var Fail: JsonObject): Boolean
     var
         Setup: Record "Bcmag Setup";
+        Gate: Record "Bcmag Changes Gate";
+        SeeEveryone: Boolean;
         Entry, Line: JsonObject;
         Tok, EntryTok, LineTok, Member: JsonToken;
         TableId, FieldNo: Integer;
@@ -441,9 +445,18 @@ codeunit 94148 "Bcmag Op Authorizer"
                 'the change history is off, or not readable by the agent, on the Wicket Setup card (Change History)');
             exit(false);
         end;
+        SeeEveryone := Gate.WritePermission();
         foreach EntryTok in Tok.AsArray() do
             if EntryTok.IsObject() then begin
                 Entry := EntryTok.AsObject();
+                if not SeeEveryone then
+                    if Entry.Get('user', Member) then
+                        if Member.IsValue() then
+                            if UpperCase(Member.AsValue().AsText()) <> UpperCase(UserId()) then begin
+                                Fail := Problem.NewFailure(403, 'changes-forbidden', 'Not allowed to read other users'' changes',
+                                    'the stored answer holds other users'' changes, which need the Wicket - Audit Changes permission set; send the request with a new key to read your own');
+                                exit(false);
+                            end;
                 TableId := 0;
                 if Entry.Get('tableId', Member) then
                     TableId := IntOf(Member);

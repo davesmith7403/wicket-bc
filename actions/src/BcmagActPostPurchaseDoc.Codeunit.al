@@ -42,11 +42,18 @@ codeunit 94202 "Bcmag Act Post Purchase Doc"
         // enabled and the document not approved, unpaid prepayments); a preview meets it too.
         if not PurchHeader.IsApprovedForPosting() then
             Error('purchase %1 %2 is not approved for posting', DocTypeName(PurchHeader."Document Type"), PurchHeader."No.");
+        // The invoice and credit memo pages also refuse to post a document that is linked to an incoming
+        // document whose amount differs from the document's total.
+        if PurchHeader."Document Type" in [PurchHeader."Document Type"::Invoice, PurchHeader."Document Type"::"Credit Memo"] then
+            if not PurchHeader.IsTotalValid() then
+                Error('purchase %1 %2: the document total does not match the amount of the incoming document linked to it', DocTypeName(PurchHeader."Document Type"), PurchHeader."No.");
         // A purchase return order SHIPS back (Purch.-Post forces Receive off for it).
         IsReturn := PurchHeader."Document Type" = PurchHeader."Document Type"::"Return Order";
         PurchHeader.Receive := Helper.GetBool(Args, 'receive', not IsReturn);
         PurchHeader.Invoice := Helper.GetBool(Args, 'invoice', true);
         PurchHeader.Ship := Helper.GetBool(Args, 'ship', IsReturn);
+        if PurchHeader."Document Type" in [PurchHeader."Document Type"::Order, PurchHeader."Document Type"::"Return Order"] then
+            CheckInvoicePostingPolicy(PurchHeader, IsReturn);
         DocType := PurchHeader."Document Type";
         DocNo := PurchHeader."No.";
 
@@ -163,6 +170,29 @@ codeunit 94202 "Bcmag Act Post Purchase Doc"
         exit(Found);
     end;
 
+    // User Setup "Purch. Invoice Posting Policy": see the sales wrapper. The Post action applies it
+    // (Purch.-Post (Yes/No)); Purch.-Post takes Receive and Invoice as given.
+    local procedure CheckInvoicePostingPolicy(var PurchHeader: Record "Purchase Header"; IsReturn: Boolean)
+    var
+        UserSetupMgt: Codeunit "User Setup Management";
+        PostQty, PostAmount, QtySelected: Boolean;
+    begin
+        UserSetupMgt.GetPurchaseInvoicePostingPolicy(PostQty, PostAmount);
+        if not PostQty then
+            exit;
+        if IsReturn then
+            QtySelected := PurchHeader.Ship
+        else
+            QtySelected := PurchHeader.Receive;
+        if not PostAmount then begin
+            if PurchHeader.Invoice then
+                Error('your User Setup does not allow invoicing purchase orders (Purch. Invoice Posting Policy is Prohibited); send invoice: false to post the quantities only');
+            exit;
+        end;
+        if not (QtySelected and PurchHeader.Invoice) then
+            Error('your User Setup requires purchase orders to be received and invoiced together (Purch. Invoice Posting Policy is Mandatory)');
+    end;
+
     local procedure ResolveHeader(Args: JsonObject; Helper: Codeunit "Bcmag Act Helper"; var PurchHeader: Record "Purchase Header")
     var
         SysIdTxt, NoTxt, DocTypeTxt: Text;
@@ -194,7 +224,7 @@ codeunit 94202 "Bcmag Act Post Purchase Doc"
             if StrLen(NoTxt) > MaxStrLen(PurchHeader."No.") then
                 Error('args.no must be at most %1 characters', MaxStrLen(PurchHeader."No."));
             if not PurchHeader.Get(DocType, NoTxt) then
-                Error('no purchase header %1 "%2"', Format(DocType), NoTxt);
+                Error('no purchase header %1 "%2"', DocTypeName(DocType), NoTxt);
             exit;
         end;
         Error('provide args.systemId, or args.documentType + args.no');

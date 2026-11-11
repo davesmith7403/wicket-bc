@@ -287,6 +287,31 @@ codeunit 94135 "Bcmag Async Worker"
         Row.Modify(true);
         Commit();
         LogOutcome(Row);
+        LogDeliveredLifts(Row, ReadInnerData(Row));
+        Commit();
+    end;
+
+    // The audit of what a delivered package disclosed. The request's own Operation Log row was written
+    // at enqueue, before any field was resolved, so its "Unmasked Fields" is empty; the fields this
+    // build read above the caller's baseline (noted against this session's request scope by
+    // BuildPackage) are known only now. A package that carries a lifted field gets a second row under
+    // the same request id (status 200, cost = its rows); without it, adding "deliver" to a query would
+    // read masked fields in clear with nothing in the log. Internal for the tests, which have no storage.
+    internal procedure LogDeliveredLifts(Row: Record "Bcmag Request Queue"; InnerData: JsonObject)
+    var
+        Logger: Codeunit "Bcmag Logger";
+        RunnerContext: Codeunit "Bcmag Op Runner Context";
+        EndedAt: DateTime;
+        DurationMs: Integer;
+    begin
+        if RunnerContext.LiftedFieldsText() = '' then
+            exit;
+        EndedAt := CurrentDateTime();
+        if Row."Started At" = 0DT then
+            Row."Started At" := EndedAt;
+        DurationMs := EndedAt - Row."Started At";
+        Logger.Write(Row."Request Id", Row."Idempotency Key", 'query', Row.Origin, CopyStr(UserId(), 1, 80), 200,
+            Row."Result Row Count", DurationMs, '', '', Row."Started At", EndedAt, InnerData);
     end;
 
     local procedure MarkFailed(EntryNo: BigInteger; ProblemType: Text; Detail: Text)

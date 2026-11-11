@@ -34,11 +34,24 @@ codeunit 94131 "Bcmag Azure Client"
         exit(IsolatedStorage.Contains(CredKeyLbl, DataScope::Company));
     end;
 
+    // The secrets are in isolated storage, which no permission set guards, and the Setup card's
+    // actions can be opened by anyone who may open the page (a page wildcard is enough). Changing them is
+    // an administrator's act: it needs the right to change Wicket Setup, which only Wicket - Admin grants.
+    local procedure CheckMayChangeSecrets()
+    var
+        Setup: Record "Bcmag Setup";
+        NotAllowedErr: Label 'Only a Wicket administrator (permission set Wicket - Admin) can change the storage credentials.';
+    begin
+        if not Setup.WritePermission() then
+            Error(NotAllowedErr);
+    end;
+
     [NonDebuggable]
     procedure SetCredential(Cred: Text)
     var
         CredSecret: SecretText;
     begin
+        CheckMayChangeSecrets();
         CredSecret := Cred;
         IsolatedStorage.Set(CredKeyLbl, CredSecret, DataScope::Company);
     end;
@@ -46,6 +59,7 @@ codeunit 94131 "Bcmag Azure Client"
     [NonDebuggable]
     procedure SetReadySas(SasToken: Text)
     begin
+        CheckMayChangeSecrets();
         // Second secret, used only for Download Mode = Ready SAS. Kept separate from the account
         // credential so the two can be rotated independently. Stored as PLAIN Text on purpose: a value
         // written through the SecretText overload can never be read back as Text on SaaS (the runtime
@@ -59,6 +73,7 @@ codeunit 94131 "Bcmag Azure Client"
     [NonDebuggable]
     procedure ClearReadySas()
     begin
+        CheckMayChangeSecrets();
         // Rotation/decommission: drop the download token. With Download Mode = Ready SAS the enqueuer
         // then refuses new work (ValidateDownloadConfiguration) instead of handing out unsigned URLs.
         if IsolatedStorage.Contains(ReadSasKeyLbl, DataScope::Company) then

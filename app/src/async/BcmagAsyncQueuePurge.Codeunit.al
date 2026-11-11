@@ -19,7 +19,10 @@ codeunit 94154 "Bcmag Async Queue Purge"
         PurgeTerminal();
     end;
 
-    [InherentPermissions(PermissionObjectType::TableData, Database::"Bcmag Request Queue", 'd')]
+    // Upper case on purpose: a lower-case letter declares an INDIRECT permission, which does nothing for
+    // a caller that holds no right of its own on the table — the purge then fails for every
+    // non-administrator, silently, since the maintenance pass only logs it (found 2026-11-10).
+    [InherentPermissions(PermissionObjectType::TableData, Database::"Bcmag Request Queue", 'RD')]
     procedure PurgeTerminal()
     var
         Setup: Record "Bcmag Setup";

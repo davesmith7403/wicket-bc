@@ -13,11 +13,11 @@ business actions, and export asynchronously against BC safely and without bespok
 It is deny-by-default, returns RFC 7807 problem documents, enforces optimistic concurrency, logs
 every call, and emits Application Insights telemetry.
 
-- App: `app/app.json` → `Wicket`, version `1.4.2.0`, publisher `Dave The Wicketkeeper`, object range `94100–94199`.
-- Companion app: [`actions/`](actions/) → `Wicket Actions - Base`, version `0.3.1.0`, object range
+- App: `app/app.json` → `Wicket`, version `1.4.3.0`, publisher `Dave The Wicketkeeper`, object range `94100–94199`.
+- Companion app: [`actions/`](actions/) → `Wicket Actions - Base`, version `0.3.2.0`, object range
   `94200–94249` — the Base-App-dependent action providers (posting wrappers). Optional.
 - Status: **full read/write/invoke plane, batch writes, change history, named actions, field-level
-  policy, and async Azure Blob delivery built.** 475 core AL tests and 41 companion tests; see [Status](#status) for what is
+  policy, and async Azure Blob delivery built.** 483 core AL tests and 46 companion tests; see [Status](#status) for what is
   still unverified.
 
 ## What it is
@@ -408,7 +408,7 @@ Verification status:
 - **CI** (AL-Go, BC 26 container): the core and companion test suites run on every push to `main`
   and on pull requests to it. The container is configured to match SaaS try-function semantics
   (`.AL-Go/NewBcContainer.ps1`).
-- **Live SaaS sandbox** (BC 28): the core and companion suites (`test/`, `actions-test/`) also run
+- **Live SaaS sandbox** (BC 28 and 29): the core and companion suites (`test/`, `actions-test/`) also run
   headless against a cloud sandbox through the test-runner web service, together with live HTTP
   calls through the published bound actions.
 - **Restricted identities:** `Bcmag Restricted Identity Test` (94349) and `Bcmag Act Restricted Test`

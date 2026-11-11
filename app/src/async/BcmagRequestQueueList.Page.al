@@ -57,7 +57,7 @@ page 94106 "Bcmag Request Queue List"
                 var
                     AsyncCancel: Codeunit "Bcmag Async Cancel";
                 begin
-                    AsyncCancel.CancelRow(Rec);
+                    AsyncCancel.CancelFromPage(Rec);
                     CurrPage.Update(false);
                 end;
             }

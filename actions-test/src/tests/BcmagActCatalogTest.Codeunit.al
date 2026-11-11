@@ -35,6 +35,31 @@ codeunit 94355 "Bcmag Act Catalog Test"
     end;
 
     [Test]
+    procedure WicketActionsGrantsExecuteOnEveryCompanionCodeunit()
+    var
+        AllObj: Record AllObjWithCaption;
+        Perm: Record "Expanded Permission";
+        Missing: Text;
+    begin
+        // The restricted tests cannot prove execute grants once a SUPER test has run a codeunit in the
+        // session, so the set's shape is pinned here: a wrapper added without its grant fails this.
+        // Install, Upgrade and New Company run in system context and are not the caller's to run.
+        AllObj.SetRange("Object Type", AllObj."Object Type"::Codeunit);
+        AllObj.SetFilter("Object ID", '94200..94249&<>%1&<>%2', Codeunit::"Bcmag Act Upgrade", Codeunit::"Bcmag Act New Company");
+        LibraryAssert.IsTrue(AllObj.FindSet(), 'the companion has codeunits');
+        repeat
+            Perm.Reset();
+            Perm.SetRange("Role ID", 'WICKET ACT');
+            Perm.SetRange("Object Type", Perm."Object Type"::Codeunit);
+            Perm.SetRange("Object ID", AllObj."Object ID");
+            Perm.SetRange("Execute Permission", Perm."Execute Permission"::Yes);
+            if Perm.IsEmpty() then
+                Missing += StrSubstNo(' %1 "%2";', AllObj."Object ID", AllObj."Object Name");
+        until AllObj.Next() = 0;
+        LibraryAssert.AreEqual('', Missing, '"Wicket Act" must grant Execute on every companion codeunit');
+    end;
+
+    [Test]
     procedure UpgradeRefreshesMetadataButNeverAllowRun()
     var
         Catalog: Record "Bcmag Action Catalog";
@@ -86,6 +111,29 @@ codeunit 94355 "Bcmag Act Catalog Test"
         LibraryAssert.IsTrue(Catalog."Is Mutating", 'the administrator''s stricter setting survives the upgrade');
         // Isolation is per codeunit: put the shipped value back for the tests that follow.
         Catalog."Is Mutating" := false;
+        Catalog.Modify();
+    end;
+
+    [Test]
+    procedure UpgradeNeverSwitchesAPreviewBackOn()
+    var
+        Catalog: Record "Bcmag Action Catalog";
+        Install: Codeunit "Bcmag Act Install";
+    begin
+        // A preview passes Read-Only Mode and needs no key. An administrator who switched it off for a
+        // verb (so a read-only endpoint runs no posting code at all) keeps that across upgrades.
+        Helper.Initialize();
+        Catalog.Get('post-sales');
+        LibraryAssert.IsTrue(Catalog."Preview Supported", 'the companion enrols post-sales with a preview');
+        Catalog."Preview Supported" := false;
+        Catalog.Modify();
+
+        Install.RefreshAll();
+
+        Catalog.Get('post-sales');
+        LibraryAssert.IsFalse(Catalog."Preview Supported", 'the administrator''s stricter setting survives the upgrade');
+        // Isolation is per codeunit: put the shipped value back for the tests that follow.
+        Catalog."Preview Supported" := true;
         Catalog.Modify();
     end;
 

@@ -15,8 +15,9 @@
 #      Procedure Catalog plus Allow Invoke on the exposure row for raw invoke (else 403).
 #   2. The calling principal holds standard BC posting permissions (e.g. D365 sales/purchase posting
 #      permission sets) in addition to a Wicket role of `Wicket - Execute` or above (invoke/action need
-#      the Execute rung; a lower role gets 403 ".../role-forbidden") and the companion's `Wicket Act`
-#      set. (Sections 1-2 insert through the generic write plane and need `Wicket - Edit`.)
+#      the Execute rung; a lower role gets 403 ".../role-forbidden"), the companion's `Wicket Act`
+#      set, and a Business Central set that carries object execution such as D365 BASIC (without one an
+#      action answers 422 ".../action-failed" naming the codeunit it could not run). (Sections 1-2 insert through the generic write plane and need `Wicket - Edit`.)
 #   3. Replace the coordinates and paste a bearer token, exactly as in docs/smoke-test.http.
 #   4. Every invoke/action call below carries an envelope `idempotencyKey`. On a fresh install Wicket
 #      Setup "Require Key For Actions" is ON, and an invoke/action without a key is refused with

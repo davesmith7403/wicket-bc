@@ -516,6 +516,119 @@ codeunit 94340 "Bcmag Write Review Test"
         LibraryAssert.IsTrue(Res.Get(UserSecurityId(), FreshCompleted), 'a recent completed reservation is kept');
     end;
 
+    [Test]
+    procedure LogPurgeCrossesSliceBoundariesAndKeepsWhatIsFresh()
+    var
+        Setup: Record "Bcmag Setup";
+        OperationLog: Record "Bcmag Operation Log";
+        IdempotencyLog: Record "Bcmag Idempotency Log";
+        Entry: Record "Bcmag Change Entry";
+        FieldChange: Record "Bcmag Field Change";
+        LogPurge: Codeunit "Bcmag Log Purge";
+        Base: BigInteger;
+        Old: DateTime;
+        FourHundredDays: BigInteger;
+    begin
+        // The purge deletes a slice of entry numbers at a time. Expired rows further apart than one
+        // slice, with a fresh row between them, show that it goes on past the first slice, that a gap
+        // in the numbers does not stop it and that only expired rows go.
+        Setup.GetSingleton();
+        Setup."Operation Log Retention Days" := 30;
+        Setup."Change Retention Days" := 90;
+        Setup.Modify();
+        FourHundredDays := 400;
+        FourHundredDays := FourHundredDays * 86400000;
+        Old := CurrentDateTime() - FourHundredDays;
+
+        Base := 0;
+        if OperationLog.FindLast() then
+            Base := OperationLog."Entry No.";
+        SeedLogRow(Base + 10, Old);
+        SeedLogRow(Base + 4000, CurrentDateTime());
+        SeedLogRow(Base + 12000, Old);
+
+        Base := 0;
+        if IdempotencyLog.FindLast() then
+            Base := IdempotencyLog."Entry No.";
+        SeedSnapshotRow(Base + 10, Old);
+        SeedSnapshotRow(Base + 4000, CurrentDateTime());
+        SeedSnapshotRow(Base + 12000, Old);
+
+        Base := 0;
+        if Entry.FindLast() then
+            Base := Entry."Entry No.";
+        SeedChangeRow(Base + 10, Old);
+        SeedChangeRow(Base + 4000, CurrentDateTime());
+        SeedChangeRow(Base + 12000, Old);
+        Commit();
+
+        LogPurge.PurgeExpired();
+
+        OperationLog.SetRange("Request Id", 'slice-test');
+        LibraryAssert.AreEqual(1, OperationLog.Count(), 'both expired Operation Log rows go, a slice apart');
+        OperationLog.FindFirst();
+        LibraryAssert.IsTrue(OperationLog."Started At" > Old, 'the fresh Operation Log row stays');
+        IdempotencyLog.SetRange("Request Id", 'slice-test');
+        LibraryAssert.AreEqual(1, IdempotencyLog.Count(), 'both expired idempotency snapshots go');
+        IdempotencyLog.FindFirst();
+        LibraryAssert.IsTrue(IdempotencyLog."Logged At" > Old, 'the fresh snapshot stays');
+        Entry.SetRange("Request Id", 'slice-test');
+        LibraryAssert.AreEqual(1, Entry.Count(), 'both expired change entries go');
+        Entry.FindFirst();
+        FieldChange.SetRange("Entry No.", Entry."Entry No.");
+        LibraryAssert.AreEqual(1, FieldChange.Count(), 'the fresh entry keeps its field line');
+        FieldChange.SetRange("Entry No.", Entry."Entry No." + 8000);
+        LibraryAssert.IsTrue(FieldChange.IsEmpty(), 'the field line of the far expired entry goes with it');
+
+        OperationLog.DeleteAll();
+        IdempotencyLog.DeleteAll();
+        FieldChange.SetRange("Entry No.", Entry."Entry No.");
+        FieldChange.DeleteAll();
+        Entry.DeleteAll();
+        Commit();
+    end;
+
+    local procedure SeedLogRow(EntryNo: BigInteger; StartedAt: DateTime)
+    var
+        OperationLog: Record "Bcmag Operation Log";
+    begin
+        OperationLog.Init();
+        OperationLog."Entry No." := EntryNo;
+        OperationLog."Request Id" := 'slice-test';
+        OperationLog.Operation := 'query';
+        OperationLog."Started At" := StartedAt;
+        OperationLog.Insert();
+    end;
+
+    local procedure SeedSnapshotRow(EntryNo: BigInteger; LoggedAt: DateTime)
+    var
+        IdempotencyLog: Record "Bcmag Idempotency Log";
+    begin
+        IdempotencyLog.Init();
+        IdempotencyLog."Entry No." := EntryNo;
+        IdempotencyLog."Idempotency Key" := CopyStr(Helper.NewIdemKey(), 1, MaxStrLen(IdempotencyLog."Idempotency Key"));
+        IdempotencyLog."Request Id" := 'slice-test';
+        IdempotencyLog."Logged At" := LoggedAt;
+        IdempotencyLog.Caller := UserSecurityId();
+        IdempotencyLog.Insert();
+    end;
+
+    local procedure SeedChangeRow(EntryNo: BigInteger; CreatedAt: DateTime)
+    var
+        Entry: Record "Bcmag Change Entry";
+        FieldChange: Record "Bcmag Field Change";
+    begin
+        Entry.Init();
+        Entry."Entry No." := EntryNo;
+        Entry."Request Id" := 'slice-test';
+        Entry."Created At" := CreatedAt;
+        Entry.Insert();
+        FieldChange.Init();
+        FieldChange."Entry No." := EntryNo;
+        FieldChange."Line No." := 1;
+        FieldChange.Insert();
+    end;
+
     local procedure SeedReservation(State: Enum "Bcmag Reservation State"; ReservedAt: DateTime; SettledAt: DateTime) IdemKey: Text
     var
         Res: Record "Bcmag Idempotency Reservation";

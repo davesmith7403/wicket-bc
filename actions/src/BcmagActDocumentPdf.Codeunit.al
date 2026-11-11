@@ -167,6 +167,11 @@ codeunit 94218 "Bcmag Act Document Pdf"
             if DocTypeOrdinal <> -1 then
                 if HeaderDocTypeOrdinal(RecRef) <> DocTypeOrdinal then
                     Error('systemId %1 is not a %2', SysIdTxt, Kind);
+            // Like every other wrapper: a systemId never wins silently over a number that names another
+            // document.
+            if Helper.GetText(Args, 'no', NoTxt) then
+                if UpperCase(NoTxt) <> Format(RecRef.Field(NoFieldNo(TableId)).Value) then
+                    Error('args.systemId names %1 %2, but args.no is "%3"; send one of them, or two that agree', Kind, Format(RecRef.Field(NoFieldNo(TableId)).Value), NoTxt);
             exit;
         end;
         if not Helper.GetText(Args, 'no', NoTxt) then

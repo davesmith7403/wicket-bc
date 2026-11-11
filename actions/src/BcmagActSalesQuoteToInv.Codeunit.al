@@ -24,7 +24,8 @@ codeunit 94216 "Bcmag Act Sales Quote To Inv"
 
         // The quote pages check this before Make Order / Make Invoice: with an approval workflow enabled,
         // a quote that was never approved is not converted.
-        ApprovalsMgmt.PrePostApprovalCheckSales(QuoteHeader);
+        if not ApprovalsMgmt.PrePostApprovalCheckSales(QuoteHeader) then
+            Error('sales quote %1 is not approved for conversion', QuoteHeader."No.");
         SalesQuoteToInvoice.Run(QuoteHeader);
         SalesQuoteToInvoice.GetSalesInvoiceHeader(InvoiceHeader);
 

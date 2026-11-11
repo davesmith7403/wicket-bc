@@ -21,6 +21,12 @@ codeunit 94325 "Bcmag Permission Set Test"
     begin
         // Reads and the async/status family are reachable ...
         AssertExecute('Wicket - Read', Codeunit::"Bcmag Rpc Dispatcher", true);
+        // The restricted-identity tests cannot prove these four: their own fixtures run them as SUPER
+        // first, and the platform checks execute on a codeunit once per session.
+        AssertExecute('Wicket - Read', Codeunit::"Bcmag Record Id Codec", true);
+        AssertExecute('Wicket - Read', Codeunit::"Bcmag Op Runner Context", true);
+        AssertExecute('Wicket - Read', Codeunit::"Bcmag Policy Defaults", true);
+        AssertExecute('Wicket - Read', Codeunit::"Bcmag Azure Client", true);
         AssertExecute('Wicket - Read', Codeunit::"Bcmag Op Runner", true);
         AssertExecute('Wicket - Read', Codeunit::"Bcmag Op Authorizer", true);
         AssertExecute('Wicket - Read', Codeunit::"Bcmag Op Discover", true);
@@ -221,6 +227,21 @@ codeunit 94325 "Bcmag Permission Set Test"
         AssertTableData('Wicket - Admin', Database::"Bcmag Read Gate", true, true, true, true);
         AssertTableData('Wicket Data - Read', Database::"Bcmag Read Gate", true, true, true, true);
         AssertTableData('Wicket Data - Exec', Database::"Bcmag Read Gate", true, true, true, true);
+    end;
+
+    [Test]
+    procedure UnmaskGateOpensForTheUnmaskSetOnly()
+    begin
+        // Reading masked fields in clear is a data grant held apart from every rung, Admin included; a
+        // tabledata wildcard yields Read on the gate, which does not open it.
+        AssertTableData('Wicket - Unmask', Database::"Bcmag Unmask Gate", true, true, true, true);
+        AssertTableData('Wicket - Read', Database::"Bcmag Unmask Gate", false, false, false, false);
+        AssertTableData('Wicket - Execute', Database::"Bcmag Unmask Gate", false, false, false, false);
+        AssertTableData('Wicket - Edit', Database::"Bcmag Unmask Gate", false, false, false, false);
+        AssertTableData('Wicket - Audit', Database::"Bcmag Unmask Gate", false, false, false, false);
+        AssertTableData('Wicket - Admin', Database::"Bcmag Unmask Gate", false, false, false, false);
+        AssertTableData('Wicket Data - Read', Database::"Bcmag Unmask Gate", true, false, false, false);
+        AssertTableData('Wicket Data - Exec', Database::"Bcmag Unmask Gate", true, false, false, false);
     end;
 
     [Test]

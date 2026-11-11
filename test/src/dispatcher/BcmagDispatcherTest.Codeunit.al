@@ -1072,6 +1072,56 @@ codeunit 94318 "Bcmag Dispatcher Test"
         Helper.CommitFixtures();
     end;
 
+    [Test]
+    procedure DeliveredPackageLogsTheLiftsItCarried()
+    var
+        Customer: Record Customer;
+        Queue: Record "Bcmag Request Queue";
+        Log: Record "Bcmag Operation Log";
+        Worker: Codeunit "Bcmag Async Worker";
+        TempBlob: Codeunit "Temp Blob";
+        InnerData, Fail: JsonObject;
+        Scope: Option Classification,Field;
+        ContentType, Pair: Text;
+        RowCount: Integer;
+        Cancelled: Boolean;
+    begin
+        // The enqueue's log row is written before any field is resolved. A package whose build read a
+        // field above the caller's baseline gets its own row under the same request id; a build that
+        // lifted nothing adds none.
+        Helper.ConfigureOpenMode();
+        Helper.ClearUserExceptions();
+        MaskCustomerName();
+        SeedCustomer('RPL-M5', 'Delivered Name');
+        Pair := Format(Database::Customer, 0, 9) + ':' + Format(Customer.FieldNo(Name), 0, 9);
+        InnerData := MaskedNameQueryData('RPL-M5');
+        Queue."Request Id" := 'deliver-lift-test';
+        Queue."Result Row Count" := 1;
+        Log.SetRange("Request Id", Queue."Request Id");
+        Log.DeleteAll();
+
+        LibraryAssert.IsTrue(Worker.BuildPackage(0, InnerData, "Bcmag Package Format"::Ndjson, TempBlob, ContentType, RowCount, Cancelled, Fail),
+            StrSubstNo('the masked build should succeed: %1', Helper.DetailOf(Fail)));
+        LibraryAssert.IsFalse(StrPos(Helper.TempBlobToText(TempBlob), 'Delivered Name') > 0, 'the baseline package carries the name masked');
+        Worker.LogDeliveredLifts(Queue, InnerData);
+        LibraryAssert.IsTrue(Log.IsEmpty(), 'a package that lifted nothing adds no log row');
+
+        Helper.AddUserException(Scope::Field, "Bcmag Data Class"::CustomerContent, Database::Customer, Customer.FieldNo(Name), "Bcmag Read Access"::Clear, '', 0DT);
+        Clear(TempBlob);
+        LibraryAssert.IsTrue(Worker.BuildPackage(0, InnerData, "Bcmag Package Format"::Ndjson, TempBlob, ContentType, RowCount, Cancelled, Fail),
+            StrSubstNo('the lifted build should succeed: %1', Helper.DetailOf(Fail)));
+        LibraryAssert.IsTrue(StrPos(Helper.TempBlobToText(TempBlob), 'Delivered Name') > 0, 'the exception puts the name in the package in clear');
+        Worker.LogDeliveredLifts(Queue, InnerData);
+        LibraryAssert.IsTrue(Log.FindLast(), 'the delivered package must have its own Operation Log row');
+        LibraryAssert.AreEqual(200, Log.Status, 'the row is a success row');
+        LibraryAssert.AreEqual('query', Log.Operation, 'the row is a query row');
+        LibraryAssert.IsTrue(StrPos(Log."Unmasked Fields", Pair) > 0,
+            StrSubstNo('the row must record the lift %1, got "%2"', Pair, Log."Unmasked Fields"));
+
+        RestoreClearPolicy();
+        Helper.CommitFixtures();
+    end;
+
     local procedure UnmaskedFieldsLogged(Body: JsonObject): Text
     var
         Log: Record "Bcmag Operation Log";

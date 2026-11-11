@@ -452,7 +452,7 @@ codeunit 94129 "Bcmag Field Policy"
     // The caller's exceptions, loaded once per instance and generation into a by-field and a
     // by-classification map. Read defensively — the read path must never raise: an inverted validity
     // window (Until before From) is never active, a field-scope row without a table or field number is
-    // ignored, and a caller without read permission on the table simply has no exceptions. Two active
+    // ignored. The one thing that does raise is a caller that may not read the table at all. Two active
     // rows for the same target resolve to the more restrictive one (deterministic, and never wider
     // than either grant).
     local procedure LoadExceptions()
@@ -463,8 +463,9 @@ codeunit 94129 "Bcmag Field Policy"
         if ExceptionsLoaded then
             exit;
         ExceptionsLoaded := true;
-        if not ExcRow.ReadPermission() then
-            exit;
+        // No ReadPermission guard: an exception can TIGHTEN a verdict (Hidden, Masked), so a principal
+        // that cannot read the table must not be judged as if it had none. The read below raises for it,
+        // like the field-row and rule lookups next to it, and the request answers 500 naming the table.
         Now := CurrentDateTime();
         ExcRow.SetCurrentKey("User Security ID", Scope);
         ExcRow.SetRange("User Security ID", UserSecurityId());

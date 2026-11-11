@@ -51,6 +51,7 @@ permissionset 94200 "Wicket Act"
         codeunit "Sales-Quote to Invoice" = X,
         codeunit "Purch.-Quote to Order" = X,
         codeunit "Available to Promise" = X,
+        codeunit "User Setup Management" = X,      // the user's invoice posting policy, checked before posting an order
         // Posting previews run Business Central's own preview engine (no writes survive it).
         codeunit "Gen. Jnl.-Post Preview" = X,
         codeunit "Posting Preview Event Handler" = X,

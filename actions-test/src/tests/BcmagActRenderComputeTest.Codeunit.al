@@ -93,6 +93,13 @@ codeunit 94359 "Bcmag Act Render Compute Test"
         LibraryAssert.IsTrue(StrPos(Helper.Txt(Response, 'detail'), 'is not a salesQuote') > 0, 'detail says why: ' + Helper.Describe(Response));
 
         Clear(Args);
+        Args.Add('document', 'salesOrder');
+        Args.Add('no', 'NOT-THIS-ONE');
+        Response := Helper.RunAction(Helper.ActionData('document-pdf', SalesHeader.SystemId, Args), '', Status);
+        Helper.AssertProblem(Status, Response, 422, 'action-failed', 'a systemId beside another number');
+        LibraryAssert.IsTrue(StrPos(Helper.Txt(Response, 'detail'), 'two that agree') > 0, 'detail says why: ' + Helper.Describe(Response));
+
+        Clear(Args);
         Args.Add('document', 'salesWhatever');
         Args.Add('no', SalesHeader."No.");
         Response := Helper.RunAction(Helper.ActionData('document-pdf', NoTarget(), Args), '', Status);

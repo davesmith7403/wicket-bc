@@ -29,5 +29,6 @@ table 94103 "Bcmag Idempotency Log"
     {
         key(PK;        "Entry No.")                    { Clustered = true; }
         key(IdemKey;   "Idempotency Key", Caller)      { }
+        key(Logged;    "Logged At")                    { }   // the retention purge filters on it
     }
 }

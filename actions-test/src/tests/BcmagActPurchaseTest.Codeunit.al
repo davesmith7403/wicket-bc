@@ -47,4 +47,44 @@ codeunit 94352 "Bcmag Act Purchase Test"
         VendLedgerEntry.SetRange("Vendor No.", VendNo);
         LibraryAssert.AreEqual(1, VendLedgerEntry.Count(), 'one vendor ledger entry');
     end;
+
+    [Test]
+    procedure AnInvoiceThatDisagreesWithItsIncomingDocumentIsNotPosted()
+    var
+        PurchHeader: Record "Purchase Header";
+        IncomingDocument: Record "Incoming Document";
+        Args, Response: JsonObject;
+        VendNo, GLAccNo: Code[20];
+        Status: Integer;
+        EntryNo: Integer;
+    begin
+        // The invoice page refuses to post an invoice whose total differs from the amount of the incoming
+        // document it is linked to (Purchase Header.IsTotalValid). Purch.-Post does not check it.
+        Helper.Initialize();
+        Helper.FindPurchaseFixture(VendNo, GLAccNo);
+        Helper.CreatePurchaseDoc("Purchase Document Type"::Invoice, VendNo, GLAccNo, PurchHeader);
+        if IncomingDocument.FindLast() then
+            EntryNo := IncomingDocument."Entry No.";
+        EntryNo += 1;
+        IncomingDocument.Init();
+        IncomingDocument."Entry No." := EntryNo;
+        IncomingDocument."Amount Incl. VAT" := 987654.32;
+        IncomingDocument.Insert();
+        PurchHeader."Incoming Document Entry No." := EntryNo;
+        PurchHeader.Modify();
+
+        Response := Helper.RunAction(Helper.ActionData(PostPurchaseTok, PurchHeader.SystemId, Args), '', Status);
+
+        Helper.AssertProblem(Status, Response, 422, 'action-failed', 'a total that disagrees with the incoming document');
+        LibraryAssert.IsTrue(StrPos(Helper.Txt(Response, 'detail'), 'incoming document') > 0, 'the refusal says what disagrees: ' + Helper.Describe(Response));
+        LibraryAssert.IsTrue(PurchHeader.Get(PurchHeader."Document Type", PurchHeader."No."), 'the invoice is not posted');
+
+        // Without the link the same invoice posts: the refusal was the total check and nothing else.
+        PurchHeader."Incoming Document Entry No." := 0;
+        PurchHeader.Modify();
+        IncomingDocument.Get(EntryNo);
+        IncomingDocument.Delete();
+        Response := Helper.RunAction(Helper.ActionData(PostPurchaseTok, PurchHeader.SystemId, Args), '', Status);
+        Helper.AssertOk(Status, Response, 'the same invoice without the link');
+    end;
 }

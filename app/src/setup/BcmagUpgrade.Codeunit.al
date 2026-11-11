@@ -30,12 +30,27 @@ codeunit 94128 "Bcmag Upgrade"
         // Tenant HMAC key: created here so no request path has to write it (idempotent, only if absent).
         HashKey.EnsureKey();
 
-        if not Setup.Get('') then
-            exit; // no singleton yet — the install codeunit materialises it on (re)install
+        if not Setup.Get('') then begin
+            // No singleton yet: when it is created it starts from the field defaults, which already are
+            // what the two once-only switches below would set. Mark them done, or a later upgrade would
+            // find the row and overwrite what an administrator chose in the meantime.
+            MarkOnceOnlyDefaultsDone();
+            exit;
+        end;
         if BackfillSetup(Setup) then
             Setup.Modify();
         EnableRequestDetailsOnce(Setup);
         EnableChangeHistoryOnce(Setup);
+    end;
+
+    local procedure MarkOnceOnlyDefaultsDone()
+    var
+        UpgradeTag: Codeunit "Upgrade Tag";
+    begin
+        if not UpgradeTag.HasUpgradeTag(RequestDetailsTag()) then
+            UpgradeTag.SetUpgradeTag(RequestDetailsTag());
+        if not UpgradeTag.HasUpgradeTag(ChangeHistoryTag()) then
+            UpgradeTag.SetUpgradeTag(ChangeHistoryTag());
     end;
 
     // The change history fields arrive on an existing singleton as Off / 0 / 0 / false. The owner's

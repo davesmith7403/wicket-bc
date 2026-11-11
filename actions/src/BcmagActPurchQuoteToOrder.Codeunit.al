@@ -24,7 +24,8 @@ codeunit 94217 "Bcmag Act Purch Quote To Order"
 
         // The quote pages check this before Make Order: with an approval workflow enabled,
         // a quote that was never approved is not converted.
-        ApprovalsMgmt.PrePostApprovalCheckPurch(QuoteHeader);
+        if not ApprovalsMgmt.PrePostApprovalCheckPurch(QuoteHeader) then
+            Error('purchase quote %1 is not approved for conversion', QuoteHeader."No.");
         PurchQuoteToOrder.Run(QuoteHeader);
         PurchQuoteToOrder.GetPurchOrderHeader(OrderHeader);
 

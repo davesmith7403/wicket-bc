@@ -113,6 +113,8 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
         if not RoleGate.CheckCaller(Operation, Fail) then begin
             Result := Problem.FromFailure(Fail, Operation, Id);
             Status := Problem.StatusOf(Fail);
+            // Recorded (the audit insert is inherent, see the Logger); the maintenance task is not armed
+            // by this principal (TryEnsureMaintenance).
             FinishRequest(Id, IdempotencyKey, Operation, Origin, Caller, Status, 0, StartedAt,
                 Problem.ProblemTypeOf(Fail), Problem.DetailOf(Fail));
             exit(Result);
@@ -574,6 +576,13 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
     end;
 
     local procedure FinishRequest(Id: Text; IdempotencyKey: Text; Operation: Text; Origin: Text; Caller: Text; Status: Integer; Cost: Integer; StartedAt: DateTime; ProblemType: Text; ProblemDetail: Text)
+    begin
+        RecordRequest(Id, IdempotencyKey, Operation, Origin, Caller, Status, Cost, StartedAt, ProblemType, ProblemDetail);
+        if not TryEnsureMaintenance() then;
+    end;
+
+    // The audit row and the telemetry signal of one request.
+    local procedure RecordRequest(Id: Text; IdempotencyKey: Text; Operation: Text; Origin: Text; Caller: Text; Status: Integer; Cost: Integer; StartedAt: DateTime; ProblemType: Text; ProblemDetail: Text)
     var
         EndedAt: DateTime;
         DurationMs: Integer;
@@ -582,15 +591,20 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
         DurationMs := EndedAt - StartedAt;
         Logger.Write(Id, IdempotencyKey, Operation, Origin, Caller, Status, Cost, DurationMs, ProblemType, ProblemDetail, StartedAt, EndedAt, AuditData);
         EmitTelemetry(Operation, Origin, Status, Cost, DurationMs, ProblemType);
-        if not TryEnsureMaintenance() then;
     end;
 
     // Keeps the maintenance task (log and change-history retention) armed; never allowed to fail a request.
+    // Never armed by a principal without the Read rung, whichever path it arrives on (a malformed
+    // envelope is answered before the role gate): the task runs as whoever armed it and re-arms itself
+    // as the same user, and such a principal cannot update the request queue, so its chain would fail
+    // at the first row it had to settle, forever.
     [TryFunction]
     local procedure TryEnsureMaintenance()
     var
         Reaper: Codeunit "Bcmag Async Reaper";
     begin
+        if not RoleGate.IsCaller() then
+            exit;
         Reaper.EnsureIfOverdue();
     end;
 

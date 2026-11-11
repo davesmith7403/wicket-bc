@@ -205,7 +205,7 @@ codeunit 94200 "Bcmag Act Post Sales Doc"
             if StrLen(NoTxt) > MaxStrLen(SalesHeader."No.") then
                 Error('args.no must be at most %1 characters', MaxStrLen(SalesHeader."No."));
             if not SalesHeader.Get(DocType, NoTxt) then
-                Error('no sales header %1 "%2"', Format(DocType), NoTxt);
+                Error('no sales header %1 "%2"', DocTypeName(DocType), NoTxt);
             exit;
         end;
 
@@ -222,6 +222,34 @@ codeunit 94200 "Bcmag Act Post Sales Doc"
         SalesHeader.Ship := Helper.GetBool(Args, 'ship', not IsReturn);
         SalesHeader.Invoice := Helper.GetBool(Args, 'invoice', true);
         SalesHeader.Receive := Helper.GetBool(Args, 'receive', IsReturn);
+        if SalesHeader."Document Type" in [SalesHeader."Document Type"::Order, SalesHeader."Document Type"::"Return Order"] then
+            CheckInvoicePostingPolicy(SalesHeader, IsReturn);
+    end;
+
+    // User Setup "Sales Invoice Posting Policy" says whether THIS user may invoice an order it ships.
+    // The Post action applies it when it offers the choices (Sales-Post (Yes/No)); Sales-Post itself
+    // takes Ship and Invoice as given. A user with no User Setup row, an application user for one,
+    // has no policy. Business Central reports it as two flags: none = allowed, quantity only =
+    // prohibited (ship or receive, never invoice), both = mandatory (always the two together).
+    local procedure CheckInvoicePostingPolicy(var SalesHeader: Record "Sales Header"; IsReturn: Boolean)
+    var
+        UserSetupMgt: Codeunit "User Setup Management";
+        PostQty, PostAmount, QtySelected: Boolean;
+    begin
+        UserSetupMgt.GetSalesInvoicePostingPolicy(PostQty, PostAmount);
+        if not PostQty then
+            exit;
+        if IsReturn then
+            QtySelected := SalesHeader.Receive
+        else
+            QtySelected := SalesHeader.Ship;
+        if not PostAmount then begin
+            if SalesHeader.Invoice then
+                Error('your User Setup does not allow invoicing sales orders (Sales Invoice Posting Policy is Prohibited); send invoice: false to post the quantities only');
+            exit;
+        end;
+        if not (QtySelected and SalesHeader.Invoice) then
+            Error('your User Setup requires sales orders to be shipped and invoiced together (Sales Invoice Posting Policy is Mandatory)');
     end;
 
     // After a successful post the source header row is gone, but the in-memory record (passed by

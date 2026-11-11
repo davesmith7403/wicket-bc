@@ -12,7 +12,7 @@ There are three distinct version numbers; do not conflate them.
 |---|---|---|---|
 | **URL major version** | the `v1.0` segment in `/api/wicket/rpc/v1.0/...` (the API page's `APIVersion`) | a **breaking wire change** is unavoidable | new path; old path stays online for the deprecation window |
 | **Data schema version** | `schemaVersion` in `describe` and `capabilities` responses (currently `"1.0"`) | the shape of an operation's `data` / result changes in a way callers can branch on | additive changes do **not** force a new URL |
-| **Extension version** | `app.json` `version` (currently `1.4.2.0`) | any release | release/upgrade tracking only; not a wire contract |
+| **Extension version** | `app.json` `version` (currently `1.4.3.0`) | any release | release/upgrade tracking only; not a wire contract |
 
 The URL segment is the only hard compatibility boundary. `app.json` can go from `1.3` to `1.9`
 shipping new operations and fields without ever touching the URL, as long as the additive rule below holds.
@@ -72,6 +72,65 @@ a new path leaf — e.g. `queryV2` — leaving the rest of `v1.0` intact.)
   guidance — the runtime truth is `capabilities`/`describe`.
 
 ## Current state
+
+- **Version 1.4.3.0** (companion `0.3.2.0`, MCP server and plugin `2.6.2`): the fixes of the
+  2026-11-10 and 2026-11-11 reviews. No new operation, table or Setup field and no data upgrade
+  (the upgrade codeunit changes how it settles two once-only defaults; the idempotency log gains a
+  key). It includes 1.4.2.0, which was tagged on 2026-11-10 and not released on its own.
+- **Fixed in 1.4.3.0:**
+  - **Retention never ran for a non-administrator.** The maintenance task runs as whoever armed it,
+    usually the agent's user. The purges of the Operation Log, the idempotency tables, the change
+    history and the request queue declared their built-in delete right in lower case, which the
+    platform reads as an indirect permission, so for every caller below `Wicket - Admin` the purge
+    failed, and the failure was only logged to telemetry. Rows, request details included, were kept
+    past **Operation Log Retention Days** and **Change Retention Days**. The first maintenance pass
+    after the upgrade removes the backlog.
+  - The purge now deletes one table at a time in committed slices, so a backlog no longer holds
+    locks on the tables every request writes to. The idempotency log has a key on its date.
+  - A principal without a caller set no longer arms the maintenance task (it could not have run
+    it), on any path: the role-gate refusal and the malformed-envelope answers before it. Its
+    refused call is written to the Operation Log all the same (the audit insert is inherent).
+  - **A query delivered as a package left no record of the masked fields it read in clear.** The
+    request's log row is written at enqueue, before any field is resolved. The worker now adds a
+    row under the same request id (status 200) with **Unmasked Fields** when the package carries a
+    lifted field.
+  - A stored `changes` answer that shows another user's entries replays only while the caller still
+    holds `Wicket - Audit Changes` (`403 replay-withheld` otherwise).
+  - A caller that cannot read the access-exception table is no longer judged as if it had no
+    exceptions: the request fails. Only a custom permission set can produce this.
+  - An upgrade that finds no Setup row in a company no longer leaves the two once-only defaults
+    (Log Request Details, change history) to be re-applied by a later upgrade.
+- **Stricter in 1.4.3.0:**
+  - Changing the storage credential or the download token needs the right to change Wicket Setup
+    (`Wicket - Admin`). Before, anyone who could open the Setup card, which a page wildcard such as
+    `Wicket Data - Read` allows, could replace them.
+  - **Cancel** on the Request Queue page cancels one's own request; another principal's needs
+    `Wicket - Admin`. Before, anyone with the page and the Read rung could cancel anyone's.
+- **Companion 0.3.2.0:**
+  - `release-sales` and `release-purchase` answer `released` from the status the document ended in
+    (it was always `true`).
+  - The quote conversions honour the result of the approval check, not only an error from it.
+  - `post-purchase` refuses an invoice or credit memo whose total differs from the amount of the
+    incoming document it is linked to, as the page does.
+  - `post-sales` and `post-purchase` apply the signed-in user's invoice posting policy (User Setup)
+    to an order, as the Post action does: Prohibited refuses `invoice: true`, Mandatory refuses
+    anything but both together. `Wicket Act` grants execute on `User Setup Management` for it.
+  - `document-pdf` refuses a `systemId` sent with a `no` that names another document, like the
+    other actions.
+  - An upgrade never switches **Preview Supported** back on for an action an administrator switched
+    it off for. A preview that is new in a version is enabled by hand.
+- **Plugin and MCP server 2.6.2:**
+  - The idempotency key the client mints for `invoke`, `action` and `batch` is handed back with a
+    server error (`@idempotencyKey` on a 5xx problem). It was shown only on success, so after a 500
+    the agent could retry only under a new key, which can post twice.
+  - A preview gets no minted key, so its answer is not stored.
+  - A `connections.json` that is not valid JSON is reported without the parser's text, which could
+    quote a secret; a connection cannot take the name of the token cache's key; guided setup records
+    the real tenant as soon as the sign-in completes.
+  - The skill says what `role-forbidden` means for a principal with no caller set, what to do when
+    `action-failed` names a missing permission, and what `released` means.
+
+## State at 1.4.2.0 (tagged, not released on its own)
 
 - **Version 1.4.2.0** (companion unchanged at `0.3.1.0`; MCP server and plugin unchanged at `2.6.1`):
   what finishing the restricted-identity tests found. No new operation or Setup field, no upgrade

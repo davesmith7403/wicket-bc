@@ -217,7 +217,7 @@ table 94100 "Bcmag Setup"
             Preset::ReadOnlySelectedTables:
                 exit(ReadOnlySelectedSetsTxt);
             Preset::ReadAndActions:
-                exit('Wicket Data - Read, Wicket - Execute, Wicket Act');
+                exit('Wicket Data - Read, Wicket - Execute, Wicket Act, D365 BASIC');
             Preset::DeveloperSandbox:
                 exit('Wicket - Admin');
         end;
