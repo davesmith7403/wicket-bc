@@ -13,11 +13,11 @@ business actions, and export asynchronously against BC safely and without bespok
 It is deny-by-default, returns RFC 7807 problem documents, enforces optimistic concurrency, logs
 every call, and emits Application Insights telemetry.
 
-- App: `app/app.json` → `Wicket`, version `1.4.3.0`, publisher `Dave The Wicketkeeper`, object range `94100–94199`.
+- App: `app/app.json` → `Wicket`, version `1.4.4.0`, publisher `Dave The Wicketkeeper`, object range `94100–94199`.
 - Companion app: [`actions/`](actions/) → `Wicket Actions - Base`, version `0.3.2.0`, object range
   `94200–94249` — the Base-App-dependent action providers (posting wrappers). Optional.
 - Status: **full read/write/invoke plane, batch writes, change history, named actions, field-level
-  policy, and async Azure Blob delivery built.** 483 core AL tests and 46 companion tests; see [Status](#status) for what is
+  policy, and async Azure Blob delivery built.** 484 core AL tests and 47 companion tests; see [Status](#status) for what is
   still unverified.
 
 ## What it is

@@ -315,6 +315,58 @@ codeunit 94349 "Bcmag Restricted Identity Test"
     end;
 
     [Test]
+    procedure ChangesShowNoValuesOfATableTheCallerCannotRead()
+    var
+        Entry: Record "Bcmag Change Entry";
+        FieldChange: Record "Bcmag Field Change";
+        Unshared: Record "Bcmag Test Unshared Record";
+        Calls, Results: JsonArray;
+        EntryNo: BigInteger;
+        Answer: Text;
+    begin
+        // The history never shows more of a table than a query of it would: the caller's own change to
+        // a table its Business Central permissions do not let it read lists the field, without values.
+        Prepare("Bcmag Record Changes"::OldAndNewValues, 'RI-M5');
+        Entry.Init();
+        Entry."Request Id" := 'ri-unreadable-table';
+        Entry."Created At" := CurrentDateTime();
+        Entry."User Security Id" := UserSecurityId();
+        Entry."User Id" := CopyStr(UserId(), 1, MaxStrLen(Entry."User Id"));
+        Entry."Table Id" := Database::"Bcmag Test Unshared Record";
+        Entry."Field Count" := 1;
+        Entry.Insert();
+        EntryNo := Entry."Entry No.";
+        FieldChange.Init();
+        FieldChange."Entry No." := EntryNo;
+        FieldChange."Line No." := 1;
+        FieldChange."Field No." := Unshared.FieldNo("Code");
+        FieldChange."Field Name" := 'Code';
+        FieldChange."Old Value" := 'RI-OLD-VALUE';
+        FieldChange."New Value" := 'RI-NEW-VALUE';
+        FieldChange."Stored As" := FieldChange."Stored As"::Clear;
+        FieldChange.Insert();
+        Helper.CommitFixtures();
+        AddCall(Calls, 'changes', 'changes', EmptyData(), false);
+
+        Results := RunAs(ReadSetTok, '', Calls);
+        AssertAll(Results, 'changes', 200, '', ReadSetTok);
+        ResponseOf(Results, 'changes').WriteTo(Answer);
+        LibraryAssert.IsTrue(StrPos(Answer, 'ri-unreadable-table') > 0, 'the entry itself is listed: ' + CopyStr(Answer, 1, 400));
+        LibraryAssert.IsFalse(StrPos(Answer, 'RI-OLD-VALUE') > 0, 'without read permission on the table the old value is not shown');
+        LibraryAssert.IsFalse(StrPos(Answer, 'RI-NEW-VALUE') > 0, 'nor the new value');
+
+        Results := RunAs(ReadSetTok, 'Wicket Test Unshared', Calls);
+        if Entry.Get(EntryNo) then
+            Entry.Delete();
+        FieldChange.SetRange("Entry No.", EntryNo);
+        FieldChange.DeleteAll();
+        Commit();
+        AssertAll(Results, 'changes', 200, '', 'Wicket - Read with the table''s own set');
+        ResponseOf(Results, 'changes').WriteTo(Answer);
+        LibraryAssert.IsTrue(StrPos(Answer, 'RI-OLD-VALUE') > 0, 'with read permission on the table the values are shown: ' + CopyStr(Answer, 1, 400));
+    end;
+
+    [Test]
     procedure ChangesReplayOfOtherUsersEntriesNeedsTheGateAgain()
     var
         Entry: Record "Bcmag Change Entry";

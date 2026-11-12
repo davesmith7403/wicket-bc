@@ -16,6 +16,43 @@ codeunit 94356 "Bcmag Act Preview Test"
         PostItemJournalTok: Label 'post-item-journal', Locked = true;
 
     [Test]
+    procedure AKeyedPreviewIsNotStoredAndRunsAgain()
+    var
+        SalesHeader: Record "Sales Header";
+        IdempotencyLog: Record "Bcmag Idempotency Log";
+        Args, Response: JsonObject;
+        CustNo, GLAccNo: Code[20];
+        IdemKey: Text;
+        Status: Integer;
+    begin
+        // A preview runs inside the forced rollback: nothing persisted, so there is nothing a stored
+        // answer would protect, and the answer of such a call (a whole PDF, for document-pdf) is not
+        // kept. The same key simply runs again.
+        Helper.Initialize();
+        Helper.FindSalesFixture(CustNo, GLAccNo);
+        Helper.CreateSalesDoc("Sales Document Type"::Invoice, CustNo, GLAccNo, SalesHeader);
+        IdemKey := Helper.NewIdemKey();
+
+        Response := Helper.RunAction(Helper.PreviewData(PostSalesTok, SalesHeader.SystemId, Args), IdemKey, Status);
+        Helper.AssertCompleted(Status, Response, 'keyed preview');
+        IdempotencyLog.SetRange("Idempotency Key", IdemKey);
+        LibraryAssert.IsTrue(IdempotencyLog.IsEmpty(), 'the preview''s answer is not stored under its key');
+
+        Response := Helper.RunAction(Helper.PreviewData(PostSalesTok, SalesHeader.SystemId, Args), IdemKey, Status);
+        Helper.AssertCompleted(Status, Response, 'the same key again');
+        LibraryAssert.IsFalse(Helper.Bool(Response, '@replayed'), 'it ran again, it was not replayed: ' + Helper.Describe(Response));
+        LibraryAssert.IsTrue(Helper.Bool(Helper.ValueOf(Response), 'preview'), 'and answered the preview');
+
+        Clear(Args);
+        Helper.CreateSalesDoc("Sales Document Type"::Quote, CustNo, GLAccNo, SalesHeader);
+        Args.Add('document', 'salesQuote');
+        Response := Helper.RunAction(Helper.ActionData('document-pdf', SalesHeader.SystemId, Args), IdemKey + '-pdf', Status);
+        Helper.AssertCompleted(Status, Response, 'keyed document-pdf');
+        IdempotencyLog.SetRange("Idempotency Key", IdemKey + '-pdf');
+        LibraryAssert.IsTrue(IdempotencyLog.IsEmpty(), 'a non-mutating action''s answer is not stored either');
+    end;
+
+    [Test]
     procedure SalesInvoicePreviewReturnsTheEntriesAndWritesNothing()
     var
         SalesHeader: Record "Sales Header";

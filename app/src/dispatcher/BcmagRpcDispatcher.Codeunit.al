@@ -71,7 +71,7 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
         IssuedAt, StartedAt: DateTime;
         Data, Fail: JsonObject;
         Cost: Integer;
-        OpOk, NoAlError, Reserved, Retryable: Boolean;
+        OpOk, NoAlError, Reserved, Retryable, RolledBack: Boolean;
     begin
         StartedAt := CurrentDateTime();
         Caller := UserId();
@@ -256,8 +256,14 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
         // was raised before anything executed and that an administrator (or time) can lift — see
         // IsPreExecutionRefusal. The logger write is [TryFunction]-guarded — a failed snapshot insert
         // cannot void the completed operation.
+        //
+        // Nor is the answer of a request that ran inside the forced rollback (a preview, a non-mutating
+        // action, a batch preview): nothing persisted, so there is no second run to protect against, and
+        // storing it would keep a copy of whatever it returned (a document-pdf's whole PDF) for the
+        // retention period. Its reservation is released like a retryable one: the same key runs again.
         Retryable := IsPreExecutionRefusal(Status, ProblemType);
-        if (IdempotencyKey <> '') and (Status < 500) and not Retryable then begin
+        RolledBack := (Operation in ['action', 'batch']) and not Authorizer.IsMutatingRequest(Operation, Data);
+        if (IdempotencyKey <> '') and (Status < 500) and not Retryable and not RolledBack then begin
             SnapshotWithoutUrlToken(Result).WriteTo(ResultText);
             Logger.LogIdempotencyResponse(IdempotencyKey, Id, BodyHash, Operation, Status, ResultText);
         end;
@@ -274,7 +280,7 @@ codeunit 94100 "Bcmag Rpc Dispatcher"
             RecordRunAfterFailure(Operation, Data, ProblemDetail);
             Settle(Reserved, IdempotencyKey, 200, false);
         end else
-            Settle(Reserved, IdempotencyKey, Status, Retryable);
+            Settle(Reserved, IdempotencyKey, Status, Retryable or RolledBack);
 
         FinishRequest(Id, IdempotencyKey, Operation, Origin, Caller, Status, Cost, StartedAt, ProblemType, ProblemDetail);
         exit(Result);

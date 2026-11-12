@@ -12,7 +12,7 @@ There are three distinct version numbers; do not conflate them.
 |---|---|---|---|
 | **URL major version** | the `v1.0` segment in `/api/wicket/rpc/v1.0/...` (the API page's `APIVersion`) | a **breaking wire change** is unavoidable | new path; old path stays online for the deprecation window |
 | **Data schema version** | `schemaVersion` in `describe` and `capabilities` responses (currently `"1.0"`) | the shape of an operation's `data` / result changes in a way callers can branch on | additive changes do **not** force a new URL |
-| **Extension version** | `app.json` `version` (currently `1.4.3.0`) | any release | release/upgrade tracking only; not a wire contract |
+| **Extension version** | `app.json` `version` (currently `1.4.4.0`) | any release | release/upgrade tracking only; not a wire contract |
 
 The URL segment is the only hard compatibility boundary. `app.json` can go from `1.3` to `1.9`
 shipping new operations and fields without ever touching the URL, as long as the additive rule below holds.
@@ -72,6 +72,25 @@ a new path leaf — e.g. `queryV2` — leaving the rest of `v1.0` intact.)
   guidance — the runtime truth is `capabilities`/`describe`.
 
 ## Current state
+
+- **Version 1.4.4.0** (companion `0.3.2.0`, MCP server and plugin `2.6.2`, all three unchanged):
+  two decisions taken after the review behind 1.4.3.0. No new operation, table or Setup field, no
+  upgrade code.
+- **Stricter in 1.4.4.0:**
+  - **`changes` shows values only for a table the caller may read in Business Central.** Before, it
+    checked the Wicket exposure and the field policy but not the caller's own table permission, so
+    a holder of `Wicket - Audit Changes` saw old and new values of tables a `query` refused it. Such
+    a line now answers `shownAs: "hidden"` with no values. The **Changed Fields** part of the Wicket
+    Changes page applies the same permission. An auditor who should see the values needs read
+    permission on the tables.
+- **Changed in 1.4.4.0:**
+  - **The answer of a request that ran inside the forced rollback is not stored under its
+    idempotency key**: a preview, a batch preview, an action with Is Mutating off (`document-pdf`,
+    `item-availability`). Nothing persisted, so there is no second run to guard against, and the
+    stored copy (for `document-pdf` the whole PDF, readable by `Wicket - Audit`) served no one. The
+    same key now runs the request again; it used to answer with `@replayed: true`.
+
+## State at 1.4.3.0
 
 - **Version 1.4.3.0** (companion `0.3.2.0`, MCP server and plugin `2.6.2`): the fixes of the
   2026-11-10 and 2026-11-11 reviews. No new operation, table or Setup field and no data upgrade

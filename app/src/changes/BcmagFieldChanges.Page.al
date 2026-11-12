@@ -30,6 +30,7 @@ page 94113 "Bcmag Field Changes"
         OldText, NewText: Text;
         Shown: Enum "Bcmag Read Access";
         HiddenTxt: Label 'changed (hidden by field policy)';
+        NoPermissionTxt: Label 'changed (you have no permission to read this table)';
 
     trigger OnAfterGetRecord()
     begin
@@ -41,5 +42,11 @@ page 94113 "Bcmag Field Changes"
         Shown := OpChanges.ShownAs(Policy, Entry."Table Id", Rec."Field No.", Rec."Stored As", OldText, NewText);
         if Shown = Shown::Hidden then
             OldText := HiddenTxt;
+        // The history shows no more of a table than the user may read in Business Central.
+        if not OpChanges.CallerMayReadTable(Entry."Table Id") then begin
+            Shown := Shown::Hidden;
+            OldText := NoPermissionTxt;
+            NewText := '';
+        end;
     end;
 }

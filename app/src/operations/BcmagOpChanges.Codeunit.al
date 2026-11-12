@@ -22,6 +22,7 @@ codeunit 94159 "Bcmag Op Changes"
         Problem: Codeunit "Bcmag Problem";
         JsonRead: Codeunit "Bcmag Json Read";
         Masker: Codeunit "Bcmag Field Masker";
+        ReadableTables, UnreadableTables: List of [Integer];
         CursorPrefixTok: Label 'changes:', Locked = true;
 
     procedure Run(Data: JsonObject; var Response: JsonObject; var Fail: JsonObject; var Cost: Integer): Boolean
@@ -121,6 +122,27 @@ codeunit 94159 "Bcmag Op Changes"
             exit(false);
         FieldType := RecRef.Field(FieldNo).Type();
         exit(true);
+    end;
+
+    // The caller's own Business Central read permission on a table (also asked by the Field Changes
+    // page). A table that no longer exists is not readable.
+    procedure CallerMayReadTable(TableId: Integer): Boolean
+    var
+        RecRef: RecordRef;
+    begin
+        if TableId = 0 then
+            exit(false);
+        if ReadableTables.Contains(TableId) then
+            exit(true);
+        if UnreadableTables.Contains(TableId) then
+            exit(false);
+        if TryOpen(RecRef, TableId) then
+            if RecRef.ReadPermission() then begin
+                ReadableTables.Add(TableId);
+                exit(true);
+            end;
+        UnreadableTables.Add(TableId);
+        exit(false);
     end;
 
     [TryFunction]
@@ -235,6 +257,8 @@ codeunit 94159 "Bcmag Op Changes"
         Obj.Add('fieldCount', Entry."Field Count");
 
         TableReadable := Exposure.IsAllowed(Exposure."Object Type"::Table, Entry."Table Id", 'read');
+        if TableReadable then
+            TableReadable := CallerMayReadTable(Entry."Table Id");
         FieldChange.SetRange("Entry No.", Entry."Entry No.");
         if FieldChange.FindSet() then
             repeat
@@ -243,7 +267,9 @@ codeunit 94159 "Bcmag Op Changes"
                 NewText := FieldChange."New Value";
                 Shown := ShownAs(Policy, Entry."Table Id", FieldChange."Field No.", FieldChange."Stored As", OldText, NewText);
                 // The agent reads values here: a table that is no longer exposed for read (or was only
-                // ever exposed for write) shows which fields changed and nothing more.
+                // ever exposed for write), or that the caller's own Business Central permissions do not
+                // let it read, shows which fields changed and nothing more. The history never shows more
+                // of a table than a query of it would.
                 if not TableReadable then
                     Shown := Shown::Hidden;
                 Line.Add('fieldNo', FieldChange."Field No.");
